@@ -59,14 +59,14 @@ def env_list(name, default_csv):
 
 API_ID = env_int("API_ID",38983053)
 API_HASH = os.getenv("API_HASH","6fa92a5633ee4d935746e5210c738da0")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8604146843:AAFSOSCoa3UOqBP1GP0hJRfdkFIeXDPK-zs")
+BOT_TOKEN = os.getenv("BOT_TOKEN", " ")
 ADMIN_ID = env_int("ADMIN_ID", 8752870238)
 
 # CHANNELS
 LOG_CHANNEL_ID = env_int("LOG_CHANNEL_ID", -1004312562319)
 LOOG_CHANNEL_ID = env_int("LOOG_CHANNEL_ID", -1002494998679)
-CHECK_CHANNELS = env_list("CHECK_CHANNELS", "-1004398128411 , -1004492362174 , -1004300644735 ")
-JOIN_URLS = env_list("JOIN_URLS", "https://t.me/Vinnu_channel_2 , https://t.me/vaanigiveaway , https://t.me/+5XICEdsfh6E2MjRl")
+CHECK_CHANNELS = env_list("CHECK_CHANNELS", " ")
+JOIN_URLS = env_list("JOIN_URLS", "https://t.me/Vinnu_channel_2 ")
 
 # LINKS & MEDIA
 TERMS_URL = os.getenv("TERMS_URL", "keen-bubblegum-6a3770.netlify.app")
