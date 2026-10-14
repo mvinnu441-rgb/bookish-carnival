@@ -74,7 +74,8 @@ CWALLET_QR = os.getenv("CWALLET_QR", "https://example.com/qr.jpg")
 CWALLET_ID = os.getenv("CWALLET_ID", "81556414")
 
 # UPI API DETAILS
-UPI_MID = os.getenv("UPI_MID", "")
+UPI_MID = os.getenv("UPI_MID", "patelnikhil80543@gmail.com")
+UPI_ID = os.getenv("UPI_ID", "9630976243@fam")
 UPI_ID = os.getenv("UPI_ID", "usadevi@yapl")
 
 OTP_REGEX = r"\b\d{4,8}\b"
