@@ -9,7 +9,7 @@ import csv
 import zipfile
 import shutil
 import html
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
 
 from telethon import TelegramClient, events, Button
@@ -17,8 +17,14 @@ from telethon.errors import (
     SessionPasswordNeededError, 
     MessageNotModifiedError,
     UserNotParticipantError,
-    ChatAdminRequiredError
+    ChatAdminRequiredError,
+    PhoneCodeInvalidError,
+    PhoneCodeExpiredError,
+    PhoneNumberInvalidError,
+    PhoneNumberBannedError,
+    FloodWaitError,
 )
+from telethon.tl.types import SentCodeTypeApp, SentCodeTypeCall
 from telethon.tl.types import ReplyKeyboardMarkup, KeyboardButtonRow, KeyboardButton
 from telethon.extensions import html as tl_html
 from telethon.tl import types as tl_types
@@ -1632,38 +1638,67 @@ async def admin_actions(event):
                 await conv.send_message(f"{P_YES} <b>Bulk Interactive Upload Complete!</b>\n{P_ON} Added: {success}\n{P_2FA} 2FA: {NEW_2FA}{fail_txt}")
 
             elif action_data == "addstock" and has_perm(uid, 'p_add_stock'):
-                phone = (await get_reply(f"{P_PHONE} Enter Phone (+919999...):")).text.replace(" ", "").replace("+", "")
+                phone = (await get_reply(f"{P_PHONE} Enter Phone (+919999...):")).raw_text.replace(" ", "").replace("+", "")
                 sp = f"sessions/{phone}"
+                delete_session_files(sp)  # purana locked/adhura session hata do taaki naya connect atke na
                 client = TelegramClient(sp, API_ID, API_HASH)
-                await client.connect()
-                sreq = await client.send_code_request(phone)
-                
-                twofa_pass = "None"
-                raw_2fa = None
-                try: 
-                    await client.sign_in(phone, (await get_reply(f"{P_OTP} OTP:")).raw_text.strip(), phone_code_hash=sreq.phone_code_hash)
-                except SessionPasswordNeededError: 
-                    raw_2fa = (await get_reply(f"{P_2FA} 2FA Pass required. Enter it now:")).raw_text.strip()
-                    twofa_pass = html.escape(raw_2fa)
-                    await client.sign_in(password=raw_2fa)
-                
-                c_name, c_icon = get_country_info(phone)
-                
-                if c_name == "Unknown":
-                    await conv.send_message(f"{P_WARN} <b>Country not recognized for +{phone}!</b>")
-                    c_icon = html.escape((await get_reply(f"{P_FLAG} <b>Enter Country Flag Emoji:</b>\n<i>Example: 🇮🇳</i>")).text)
-                    c_name = html.escape((await get_reply(f"{P_GLOBE} <b>Enter Country Name:</b>\n<i>Example: India</i>")).text)
-                
-                auto_year = await detect_account_year(client)
-                ok, err = await force_2fa_2007(client, raw_2fa)
-                if ok:
-                    twofa_pass = NEW_2FA
-                    await conv.send_message(f"{P_2FA} <b>2FA password change ho kar {NEW_2FA} ho gaya.</b>")
-                else:
-                    await conv.send_message(f"{P_WARN} <b>2FA 2007 nahi ho paya:</b> {html.escape(str(err))}")
-                await client.disconnect()
-                
-                year = int((await get_reply(f"{P_CAL} Detected Year: <b>{auto_year}</b>\nReply with Year to confirm or change:")).text)
+                year = None
+                try:
+                    await client.connect()
+                    sreq = await client.send_code_request(phone)
+
+                    if isinstance(sreq.type, SentCodeTypeApp):
+                        await conv.send_message(f"{P_WARN} <b>Ye OTP Telegram APP me aayega, SMS me nahi!</b>\nIs number ke Telegram app me jaake code dekho (India numbers me SMS kai baar DLT rule ki wajah se block ho jaata hai).")
+                    elif isinstance(sreq.type, SentCodeTypeCall):
+                        await conv.send_message(f"{P_WARN} <b>Code is number par CALL karke bataya jaayega.</b>")
+
+                    twofa_pass = "None"
+                    raw_2fa = None
+                    try:
+                        otp = (await get_reply(f"{P_OTP} OTP:")).raw_text.strip()
+                        await client.sign_in(phone, otp, phone_code_hash=sreq.phone_code_hash)
+                    except SessionPasswordNeededError:
+                        raw_2fa = (await get_reply(f"{P_2FA} 2FA Pass required. Enter it now:")).raw_text.strip()
+                        twofa_pass = html.escape(raw_2fa)
+                        await client.sign_in(password=raw_2fa)
+                    except (PhoneCodeInvalidError, PhoneCodeExpiredError):
+                        await conv.send_message(f"{P_NO} <b>OTP galat ya expire ho gaya.</b> Phir se 'Add Single Acc' dabao.")
+                        return
+
+                    c_name, c_icon = get_country_info(phone)
+
+                    if c_name == "Unknown":
+                        await conv.send_message(f"{P_WARN} <b>Country not recognized for +{phone}!</b>")
+                        c_icon = html.escape((await get_reply(f"{P_FLAG} <b>Enter Country Flag Emoji:</b>\n<i>Example: 🇮🇳</i>")).text)
+                        c_name = html.escape((await get_reply(f"{P_GLOBE} <b>Enter Country Name:</b>\n<i>Example: India</i>")).text)
+
+                    auto_year = await detect_account_year(client)
+                    ok, err = await force_2fa_2007(client, raw_2fa)
+                    if ok:
+                        twofa_pass = NEW_2FA
+                        await conv.send_message(f"{P_2FA} <b>2FA password change ho kar {NEW_2FA} ho gaya.</b>")
+                    else:
+                        await conv.send_message(f"{P_WARN} <b>2FA 2007 nahi ho paya:</b> {html.escape(str(err))}")
+
+                    year = int((await get_reply(f"{P_CAL} Detected Year: <b>{auto_year}</b>\nReply with Year to confirm or change:")).text)
+                except PhoneNumberInvalidError:
+                    await conv.send_message(f"{P_NO} <b>Ye phone number valid nahi hai.</b>")
+                    return
+                except PhoneNumberBannedError:
+                    await conv.send_message(f"{P_NO} <b>Ye number Telegram se banned hai.</b>")
+                    return
+                except FloodWaitError as fw:
+                    await conv.send_message(f"{P_WARN} <b>Telegram ne rate-limit laga diya.</b> {fw.seconds} seconds baad try karo.")
+                    return
+                except asyncio.TimeoutError:
+                    await conv.send_message(f"{P_WARN} <b>10 minute me reply nahi aaya, process cancel ho gaya.</b> Phir se 'Add Single Acc' dabao.")
+                    return
+                finally:
+                    try: await client.disconnect()
+                    except: pass
+
+                if year is None:
+                    return
                 auto_row = cur.execute("SELECT price FROM auto_prices WHERE country=? AND year=?", (c_name, str(year))).fetchone()
                 if not auto_row: auto_row = cur.execute("SELECT price FROM auto_prices WHERE country=? AND year='Common'", (c_name,)).fetchone()
 
@@ -1764,6 +1799,14 @@ def otp_buttons(phone):
     return [[Button.inline("🔄 Get OTP Again", f"get_otp_again|{phone}")],
             [Button.inline("🚪 Finish & Logout", f"logout_bot|{phone}")]]
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def to_ist(dt):
+    """Telegram time UTC me deta hai, ise India time (IST) me badalta hai."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')
+
 async def render_sessions(e, phone, note=""):
     """Account ke saare login devices dikhata hai, har device ka alag Logout button ke saath."""
     order = active_orders.get(phone)
@@ -1776,7 +1819,7 @@ async def render_sessions(e, phone, note=""):
     for n, a in enumerate(others, 1):
         dev = html.escape(f"{a.device_model or 'Unknown'} | {a.app_name or ''} {a.platform or ''}".strip())
         loc = html.escape(a.country or "Unknown")
-        when = a.date_active.strftime('%d %b %Y %H:%M') if a.date_active else "-"
+        when = to_ist(a.date_active) if a.date_active else "-"
         lines.append(f"📱 <b>Device {n}</b>\n    {dev}\n    🌍 {loc} | 🕒 {when}")
         short = (a.device_model or 'Unknown')[:14]
         btns.append([Button.inline(f"❌ Logout Device {n} ({short})", f"lo_dev|{phone}|{a.hash}")])
