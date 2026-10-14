@@ -60,8 +60,8 @@ def env_list(name, default_csv):
 
 # ⚠️ Secrets ab code me nahi hain. .env file me daalo:
 # API_ID=...  API_HASH=...  BOT_TOKEN=...
-API_ID = env_int("API_ID", 0)
-API_HASH = os.getenv("API_HASH", "")
+API_ID = env_int("API_ID", 38983053)
+API_HASH = os.getenv("API_HASH", " 6fa92a5633ee4d935746e5210c738da0 ")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_ID = env_int("ADMIN_ID", 8752870238)
 
