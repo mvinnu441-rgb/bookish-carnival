@@ -9,7 +9,7 @@ import csv
 import zipfile
 import shutil
 import html
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
 
 from telethon import TelegramClient, events, Button
@@ -17,11 +17,19 @@ from telethon.errors import (
     SessionPasswordNeededError, 
     MessageNotModifiedError,
     UserNotParticipantError,
-    ChatAdminRequiredError
+    ChatAdminRequiredError,
+    PhoneCodeInvalidError,
+    PhoneCodeExpiredError,
+    PhoneNumberInvalidError,
+    PhoneNumberBannedError,
+    FloodWaitError,
 )
 from telethon.tl.types import ReplyKeyboardMarkup, KeyboardButtonRow, KeyboardButton
+from telethon.extensions import html as tl_html
+from telethon.tl import types as tl_types
 from telethon.tl.functions.channels import GetParticipantRequest
-from telethon.tl.functions.account import GetPasswordRequest
+from telethon.tl.functions.account import GetPasswordRequest, GetAuthorizationsRequest, ResetAuthorizationRequest
+from telethon.tl.functions.auth import ResetAuthorizationsRequest
 
 # ================= CONFIGURATION =================
 def load_env_file(path=".env"):
@@ -56,15 +64,16 @@ def env_list(name, default_csv):
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-API_ID = env_int("API_ID",38983053)
-API_HASH = os.getenv("API_HASH","6fa92a5633ee4d935746e5210c738da0")
+API_ID = env_int("API_ID", )
+API_HASH = os.getenv("API_HASH"," ")
 BOT_TOKEN = os.getenv("BOT_TOKEN", " ")
 ADMIN_ID = env_int("ADMIN_ID", 8752870238)
 
 # CHANNELS
 LOG_CHANNEL_ID = env_int("LOG_CHANNEL_ID", -1004312562319)
-CHECK_CHANNELS = env_list("CHECK_CHANNELS", "-1004398128411")
-JOIN_URLS = env_list("JOIN_URLS", "https://t.me/Vinnu_channel_2")
+LOOG_CHANNEL_ID = env_int("LOOG_CHANNEL_ID", -1002494998679)
+CHECK_CHANNELS = env_list("CHECK_CHANNELS", " ")
+JOIN_URLS = env_list("JOIN_URLS", "https://t.me/Vinnu_channel_2 ")
 
 # LINKS & MEDIA
 TERMS_URL = os.getenv("TERMS_URL", "keen-bubblegum-6a3770.netlify.app")
@@ -182,6 +191,76 @@ def validate_config():
             len(CHECK_CHANNELS), len(JOIN_URLS)
         )
 
+# ================= TEXT STYLE (Bold Serif CAPS + Small Caps) =================
+import string as _string
+
+_SMALL_CAPS = "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ"
+assert len(_SMALL_CAPS) == 26
+STYLE_MAP = {}
+for _i, _c in enumerate(_string.ascii_uppercase):
+    STYLE_MAP[_c] = chr(0x1D400 + _i)                      # 𝐀 𝐁 𝐂 ... (Bold Serif)
+for _c, _sc in zip(_string.ascii_lowercase, _SMALL_CAPS):
+    STYLE_MAP[_c] = _sc                                    # ᴀ ʙ ᴄ ... (Small Caps)
+
+# In cheezon ko style nahi karte: @username, links, /commands
+STYLE_SKIP_RE = re.compile(r"@\w+|https?://\S+|t\.me/\S+|(?<!\S)/\w+")
+_PROTECTED_NAMES = ("MessageEntityCode", "MessageEntityPre", "MessageEntityUrl", "MessageEntityMention",
+                    "MessageEntityMentionName", "InputMessageEntityMentionName", "MessageEntityBotCommand",
+                    "MessageEntityHashtag", "MessageEntityEmail", "MessageEntityCustomEmoji")
+STYLE_PROTECTED = tuple(getattr(tl_types, n) for n in _PROTECTED_NAMES if hasattr(tl_types, n))
+
+
+def style_plain(text, entities, protected=STYLE_PROTECTED):
+    """text ko style karta hai aur entity offsets (UTF-16) ko sahi karta hai."""
+    if not text:
+        return text, entities
+    n = len(text)
+    prot = [False] * n
+    for m in STYLE_SKIP_RE.finditer(text):
+        for i in range(m.start(), m.end()):
+            prot[i] = True
+
+    pos, u = [], 0
+    for ch in text:
+        pos.append(u)
+        u += 2 if ord(ch) > 0xFFFF else 1
+    total = u
+
+    for en in (entities or []):
+        if isinstance(en, protected):
+            a, b = en.offset, en.offset + en.length
+            for i, pu in enumerate(pos):
+                if a <= pu < b:
+                    prot[i] = True
+
+    out, mp, newu = [], [0] * (total + 2), 0
+    for i, ch in enumerate(text):
+        new_ch = ch if prot[i] else STYLE_MAP.get(ch, ch)
+        w_old = 2 if ord(ch) > 0xFFFF else 1
+        w_new = 2 if ord(new_ch) > 0xFFFF else 1
+        for k in range(w_old):
+            mp[pos[i] + k] = newu
+        out.append(new_ch)
+        newu += w_new
+    mp[total] = newu
+    mp[total + 1] = newu
+
+    for en in (entities or []):
+        a = mp[min(en.offset, total)]
+        b = mp[min(en.offset + en.length, total)]
+        en.offset, en.length = a, max(b - a, 0)
+    return "".join(out), entities
+
+
+class StyledHTML:
+    """Telethon parse_mode: HTML parse karke text ko Bold-Serif CAPS + Small Caps me convert karta hai."""
+    def parse(self, message):
+        text, entities = tl_html.parse(message)
+        return style_plain(text, entities)
+
+    def unparse(self, text, entities):
+        return tl_html.unparse(text, entities)
+
 # ================= INITIALIZATION =================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -190,7 +269,7 @@ os.makedirs("sessions", exist_ok=True)
 
 session_name = f"bot_session_{BOT_TOKEN.split(':')[0]}"
 bot = TelegramClient(session_name, API_ID, API_HASH)
-bot.parse_mode = 'html'
+bot.parse_mode = StyledHTML()
 
 db = sqlite3.connect("otp_bot_final.db", check_same_thread=False, timeout=20)
 db.execute("PRAGMA journal_mode=WAL;")
@@ -292,6 +371,14 @@ def setup_db():
 
 setup_db()
 
+# [NEW] ref_rewarded column: purane users ko dobara reward nahi milega
+try:
+    cur.execute("ALTER TABLE users ADD COLUMN ref_rewarded INTEGER DEFAULT 0")
+    cur.execute("UPDATE users SET ref_rewarded=1")
+    db.commit()
+except sqlite3.OperationalError:
+    pass
+
 # ================= HELPER FUNCTIONS =================
 def is_bot_online():
     res = cur.execute("SELECT value FROM settings WHERE key='bot_status'").fetchone()
@@ -318,7 +405,7 @@ def get_usdt_rate():
 
 def get_support_url():
     res = cur.execute("SELECT value FROM settings WHERE key='support_url'").fetchone()
-    url = res[0] if res and res[0] else "https://t.me/vincenzohelpbot"
+    url = res[0] if res and res[0] else "https://t.me/vinnu_exe"
     if not url.startswith("http"): url = "https://" + url.replace("@", "t.me/")
     return url
 
@@ -369,7 +456,7 @@ async def check_channel_joined(uid):
 
 
 COUNTRY_CODES = {
-    '1': ('USA', '🇺🇸'),'1': ('CANADA','🇨🇦'), '7': ('Russia', '🇷🇺'), '20': ('Egypt', '🇪🇬'),
+    '1': ('USA', '🇺🇸'), '7': ('Russia', '🇷🇺'), '20': ('Egypt', '🇪🇬'),
     '27': ('South Africa', '🇿🇦'), '31': ('Netherlands', '🇳🇱'), '32': ('Belgium', '🇧🇪'),
     '33': ('France', '🇫🇷'), '34': ('Spain', '🇪🇸'), '39': ('Italy', '🇮🇹'), 
     '44': ('UK', '🇬🇧'), '46': ('Sweden', '🇸🇪'), '48': ('Poland', '🇵🇱'),
@@ -414,15 +501,15 @@ def get_country_info(phone):
 async def detect_account_year(client):
     year = 2024
     try:
-        try: await client.delete_dialog('TGDNAbot')
+        try: await client.delete_dialog('TGrv_bot')
         except: pass
-        await client.send_message('TGDNAbot', '/start')
+        await client.send_message('TGrv_bot', '/start')
         me = await client.get_me()
         await asyncio.sleep(1)
-        await client.send_message('TGDNAbot', str(me.id)) 
+        await client.send_message('TGrv_bot', str(me.id)) 
         for _ in range(8):
             await asyncio.sleep(1.5)
-            msgs = await client.get_messages('TGDNAbot', limit=3)
+            msgs = await client.get_messages('TGrv_bot', limit=3)
             for m in msgs:
                 if m.text and ('Created:' in m.text or 'Age:' in m.text or 'Registration' in m.text):
                     match = re.search(r'(?:Created|Age|Registration)[^\d]*(\d{4})', m.text, re.IGNORECASE)
@@ -430,27 +517,59 @@ async def detect_account_year(client):
     except Exception: pass
     return year
 
-# ================= LOGGING LOGIC =================
-async def process_referral_bonus(uid, amount):
-    row = cur.execute("SELECT referred_by FROM users WHERE user_id=?", (uid,)).fetchone()
-    ref = row[0] if row else None
-    if ref:
-        pct_row = cur.execute("SELECT value FROM settings WHERE key='ref_percent'").fetchone()
-        pct = float(pct_row[0]) if pct_row else 3.0
-        if pct > 0:
-            bonus = int(amount * (pct / 100))
-            if bonus > 0:
-                update_balance(ref, bonus)
-                try:
-                    await bot.send_message(
-                        ref,
-                        f"{PE_GIFT} <b>Referral Bonus Unlocked!</b>\n"
-                        f"{PE_HEART} Your referral <code>{uid}</code> deposited {P_INR}{amount}.\n"
-                        f"{PE_CHECK} You earned <b>{P_INR}{bonus}</b>!"
-                    )
-                except:
-                    pass
+NEW_2FA = "2007"
 
+async def force_2fa_2007(client, old_password=None):
+    """Account ka 2FA password 2007 kar deta hai. Return: (ok, error_text)"""
+    try:
+        pwd = await client(GetPasswordRequest())
+        if pwd.has_password:
+            if not old_password or old_password == "None":
+                return False, "purana 2FA password pata nahi"
+            if old_password == NEW_2FA:
+                return True, None
+            await client.edit_2fa(current_password=old_password, new_password=NEW_2FA, hint="")
+        else:
+            await client.edit_2fa(new_password=NEW_2FA, hint="")
+        return True, None
+    except Exception as ex:
+        return False, str(ex)[:120]
+
+# ================= REFERRAL SYSTEM (FLAT ₹ PER REFER) =================
+def is_ref_enabled():
+    r = cur.execute("SELECT value FROM settings WHERE key='ref_enabled'").fetchone()
+    return r[0] == 'on' if r else True
+
+def get_ref_bonus():
+    r = cur.execute("SELECT value FROM settings WHERE key='ref_bonus'").fetchone()
+    try: return int(r[0]) if r else 1
+    except: return 1
+
+async def process_referral_bonus(uid, amount):
+    # Deposit % bonus ab band hai (flat bonus join par milta hai)
+    return
+
+async def reward_referrer_on_join(uid):
+    if not is_ref_enabled(): return
+    row = cur.execute("SELECT referred_by, ref_rewarded FROM users WHERE user_id=?", (uid,)).fetchone()
+    if not row or not row[0] or row[1]: return
+    ref, bonus = row[0], get_ref_bonus()
+    cur.execute("UPDATE users SET ref_rewarded=1 WHERE user_id=? AND ref_rewarded=0", (uid,))
+    if cur.rowcount == 0: return
+    db.commit()
+    if bonus > 0:
+        update_balance(ref, bonus)
+        try:
+            await bot.send_message(
+                ref,
+                f"{PE_GIFT} <b>Referral Bonus Unlocked!</b>\n"
+                f"{PE_HEART} Your referral <code>{uid}</code> joined the bot.\n"
+                f"{PE_CHECK} You earned <b>{P_INR}{bonus}</b>!"
+            )
+        except:
+            pass
+
+# ================= LOGGING LOGIC =================
 async def log_primary_deposit(uid, amt, method):
     try:
         try:
@@ -465,7 +584,7 @@ async def log_primary_deposit(uid, amt, method):
                f"{P_MONEY} Aᴍᴏᴜɴᴛ: {P_INR}{amt}\n"
                f"{P_CARD} Mᴇᴛʜᴏᴅ: {method}\n"
                f"{P_TIME} Tɪᴍᴇ: {t}\n\n"
-               f"<i>{PE_HEART} Thanks for depositing in Fresh Vinnu Account Store !</i>")
+               f"<i>{PE_HEART} Thanks for depositing in Vinnu Account Store!</i>")
         try: await bot.send_message(LOG_CHANNEL_ID, msg)
         except Exception as e: logger.error(f"Failed Log: {e}")
     except Exception as e: logger.error(f"Global Dep Log Err: {e}")
@@ -474,14 +593,15 @@ async def log_primary_purchase(uid, country, price, amount, year, qty):
     try:
         t = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         msg = (f"{PE_LIGHTNING} <b>NEW PURCHASE SUCCESSFUL</b>\n\n"
-               f"{P_ID} Uꜱᴇʀ Iᴅ: <code>{uid}</code>\n"
+               
+               f'{P_ID} Uꜱᴇʀ Iᴅ: <code>******{str(uid)[-4:]}</code>\n'
                f"{P_GLOBE} Cᴏᴜɴᴛʀʏ: {country}\n"
                f"{P_MONEY} Pʀɪᴄᴇ: {P_INR}{price}\n"
                f"{P_CARD} Tᴏᴛᴀʟ Pᴀɪᴅ: {P_INR}{amount}\n"
                f"{P_CAL} Yᴇᴀʀ: {year}\n"
                f"{P_PKG} Qᴜᴀɴᴛɪᴛʏ: {qty}\n"
                f"{P_TIME} Tɪᴍᴇ: {t}")
-        try: await bot.send_message(LOG_CHANNEL_ID, msg)
+        try: await bot.send_message(LOOG_CHANNEL_ID, msg)
         except: pass
     except Exception as e: logger.error(f"Pur Log Err: {e}")
 
@@ -489,9 +609,9 @@ async def log_primary_purchase(uid, country, price, amount, year, qty):
 def get_persistent_menu(uid):
     rows = [
         [KeyboardButton("🛒 Buy Account"), KeyboardButton("👤 My Profile")],
-        [KeyboardButton("📁 Buy Sessions")],
+        [KeyboardButton("📁 Buy Sessions"), KeyboardButton("🎁 Refer & Earn")],
         [KeyboardButton("💰 Deposit"), KeyboardButton("📊 My Stats")],
-        [KeyboardButton("📞 Support")] [KeyboardButton("How To Use")]
+        [KeyboardButton("📞 Support")]
     ]
     if is_admin(uid): rows.append([KeyboardButton("🔐 Admin Panel")])
     return ReplyKeyboardMarkup([KeyboardButtonRow(r) for r in rows], resize=True)
@@ -519,22 +639,26 @@ def get_join_buttons():
     buttons.append([Button.inline("✅ Verify Joined", "verify_join")])
     return buttons
 
+async def build_welcome(uid):
+    if is_ref_enabled():
+        me = await bot.get_me()
+        link = (f"{P_GLOBE} <code>https://t.me/{me.username}?start=ref_{uid}</code>"
+                if me.username else f"{P_GLOBE} <i>Set a public bot username.</i>")
+        ref_part = (f"{P_GIFT} <b>Refer & Earn:</b>\n"
+                    f"Invite friends and earn per refer {P_INR}{get_ref_bonus()}\n{link}")
+    else:
+        ref_part = (f"{P_OFF} <b>Referral service is temporarily off.</b>\n\n"
+                    f"Please check back later.")
+    return (f"{PE_HEART} <b>Welcome to Vinnu Account Store!</b>\n\n"
+            f"{PE_GIFT} <b>Premium services:</b> Buy accounts, sessions, and top up instantly.\n"
+            f"{ref_part}\n\n"
+            f"👨‍💻 <b>Developer:</b> @vinnu_exe")
+
+async def refer_handler(event):
+    await bot.send_message(event.chat_id, await build_welcome(event.sender_id))
+
 async def send_main_menu(event, uid):
-    me = await bot.get_me()
-    pct_row = cur.execute("SELECT value FROM settings WHERE key='ref_percent'").fetchone()
-    pct = pct_row[0] if pct_row else "3"
-    bot_username = me.username or ""
-    ref_line = (
-        f"{P_GLOBE} <code>https://t.me/{bot_username}?start=ref_{uid}</code>"
-        if bot_username else
-        f"{P_GLOBE} <i>Set a public bot username to enable referral links.</i>"
-    )
-    msg = (f"{PE_HEART} <b>Welcome to Vinnu Account Store </b>\n\n"
-           f"{PE_GIFT} <b>Premium services:</b> Buy accounts, sessions, and top up instantly.\n"
-           f"{P_GIFT} <b>Refer & Earn:</b>\nInvite friends and earn {pct}% of their deposits!\n"
-           f"{ref_line}\n\n"
-           f"👨‍💻 <b>Developer:</b> @Mr_Vx6 ")
-    
+    msg = await build_welcome(uid)
     if isinstance(event, events.CallbackQuery.Event):
         try: await event.delete()
         except: pass
@@ -613,9 +737,9 @@ async def show_upi_qr(event, amount):
     order_id = f"ORDER_{uid}_{int(time.time())}"
     await event.edit(f"{P_WAIT} Generating Payment QR...")
     
-    upi_url = f"upi://pay?pa={UPI_ID}&pn=Vinnu Account Store &am={amount}&cu=INR"
+    upi_url = f"upi://pay?pa={UPI_ID}&pn=VinnuAccountStore&am={amount}&cu=INR"
     encoded_upi = quote(upi_url)
-    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=800x800&data={encoded_upi}"
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=400x400&data={encoded_upi}"
     
     try:
         cur.execute("INSERT INTO upi_orders (order_id, user_id, amount, status) VALUES (?,?,?,?)", (order_id, uid, amount, "pending"))
@@ -651,7 +775,7 @@ async def verify_upi_payment(event, order_id):
         try:
             await conv.send_message("👇 <b>Please enter the 12-Digit UTR / Reference Number of your payment:</b>\n\n<i>(Type /cancel to abort)</i>")
             resp = await conv.get_response()
-            utr_number = resp.text.strip()
+            utr_number = resp.raw_text.strip()
             
             if utr_number == "/cancel":
                 return await conv.send_message("❌ Cancelled.")
@@ -670,7 +794,7 @@ async def verify_upi_payment(event, order_id):
                    f"{P_ACC} User: <code>{uid}</code>\n"
                    f"{P_MONEY} Amount: <b>₹{amt}</b>\n"
                    f"🧾 UTR Submitted: <code>{utr_number}</code>\n"
-                   f"Please verify this UTR in your FamPay app.")
+                   f"Please verify this UTR in your Payment app.")
             
             btns = [
                 [Button.inline(f"✅ Accept (₹{amt})", f"dep_acc|{dep_id}|{uid}|UPI|exact|{amt}"), 
@@ -732,27 +856,65 @@ async def show_years(event, flow, country):
     btns.append([Button.inline("Back to Countries", f"pg_c|{flow}|1")])
     await event.edit(msg, buttons=btns)
 
+def mask_phone(phone):
+    p = str(phone)
+    return f"{p[:2]}•••{p[-4:]}" if len(p) > 6 else p
+
+def usd_inr(inr):
+    return f"${to_usd(inr):.2f} • {P_INR}{inr}"
+
+def user_final_price(uid, base):
+    row = cur.execute("SELECT discount FROM users WHERE user_id=?", (uid,)).fetchone()
+    d = row[0] if row else 0
+    return base if d == 0 else int(base * (100 - d) / 100)
+
+async def show_account_info(event, country, year, price_str):
+    uid, base = event.sender_id, int(price_str)
+    row = cur.execute("SELECT country_icon, COUNT(*) FROM stock WHERE available=1 AND country_name LIKE ? AND account_year=? AND price=?", (f"{country}%", int(year), base)).fetchone()
+    if not row or not row[1]: return await event.answer("❌ Out of stock!", alert=True)
+    icon, cnt = row
+    final = user_final_price(uid, base)
+    msg = (f"⚡ <b>Telegram Account Info</b>\n\n"
+           f"🌍 <b>Country :</b> {icon} {country}\n"
+           f"💸 <b>Price :</b> {usd_inr(final)}\n"
+           f"📦 <b>Available :</b> {cnt}\n"
+           f"🔍 Reliable | Affordable | Good Quality\n\n"
+           f"⚠️ <b>Important:</b> Please use Graph Manager / Plus Messenger.\n"
+           f"🚫 We are not responsible for any freeze/ban")
+    btns = [[Button.inline("🛒 Buy Now", f"pc|{country}|{year}|{base}")],
+            [Button.inline("⬅️ Back", f"bc|single|{country}")]]
+    await event.edit(msg, buttons=btns)
+
 async def confirm_purchase(event, country, year, price_str):
-    uid = event.sender_id
-    base_price = int(price_str)
-    
+    uid, base = event.sender_id, int(price_str)
+    acc = cur.execute("SELECT phone, country_icon, account_year, twofa FROM stock WHERE available=1 AND country_name LIKE ? AND account_year=? AND price=? ORDER BY phone LIMIT 1", (f"{country}%", int(year), base)).fetchone()
+    if not acc: return await event.answer("❌ Sold out!", alert=True)
+    phone, icon, yr, twofa = acc
+
     bal_row = cur.execute("SELECT balance FROM users WHERE user_id=?", (uid,)).fetchone()
     bal = bal_row[0] if bal_row else 0
-    disc_row = cur.execute("SELECT discount FROM users WHERE user_id=?", (uid,)).fetchone()
-    discount = disc_row[0] if disc_row else 0
-    final_price = base_price if discount == 0 else int(base_price * (100 - discount) / 100)
+    final = user_final_price(uid, base)
+    age_y = max(datetime.now().year - int(yr), 0)
+    has_2fa = "✅ Yes" if twofa and twofa != "None" else "❌ No"
+    after = (f"{P_INR}{bal - final}" if bal >= final else "⚠️ Insufficient Balance")
+    after_line = f"💸 After: {usd_inr(bal - final)}" if bal >= final else f"💸 After: {after}"
 
-    msg = (f"{PE_CHECK} <b>Confirm Your Purchase</b>\n\n"
-           f"{P_FLAG} <b>Country:</b> {country}\n"
-           f"{P_CAL} <b>Year:</b> {year}\n"
-           f"{P_MONEY} <b>Final Price:</b> {P_INR}{final_price}\n\n"
-           f"{P_CARD} <b>Your Balance:</b> {P_INR}{bal}\n\n"
-           f"❓ Do you want to proceed with this purchase?")
-    
-    btns = [
-        [Button.inline("Yes, Buy Now", f"buy_cf|{country}|{year}|{base_price}")],
-        [Button.inline("No, Cancel", "cancel_action")]
-    ]
+    msg = (f"━━━━━━━━━━━━━━━━━━━━\n"
+           f"🛒 <b>PURCHASE CONFIRMATION</b>\n"
+           f"━━━━━━━━━━━━━━━━━━━━\n\n"
+           f"🏷️ {icon} {country}\n\n"
+           f"<b>Account Details:</b>\n"
+           f"📞 Phone: <code>{mask_phone(phone)}</code>\n"
+           f"⏰ Age: {yr} ({age_y}Y)\n"
+           f"🔐 2FA: {has_2fa}\n\n"
+           f"<b>Payment:</b>\n"
+           f"💰 Price: {usd_inr(final)}\n"
+           f"💵 Balance: {usd_inr(bal)}\n"
+           f"{after_line}\n\n"
+           f"✅ Please use Plus Messenger.\n"
+           f"🚫 We are not responsible for any freeze/ban")
+    btns = [[Button.inline("✅ Confirm Purchase", f"buy_cf|{country}|{year}|{base}")],
+            [Button.inline("❌ Cancel", "cancel_action")]]
     await event.edit(msg, buttons=btns)
 
 async def process_purchase(event, country, year_str, price_str):
@@ -763,7 +925,7 @@ async def process_purchase(event, country, year_str, price_str):
     final_price = base_price if discount == 0 else int(base_price * (100 - discount) / 100)
 
     async with get_user_lock(uid):
-        row = cur.execute("SELECT phone, session_file, country_icon, account_year, twofa FROM stock WHERE country_name LIKE ? AND account_year=? AND price=? AND available=1 LIMIT 1", (f"{country}%", int(year_str), base_price)).fetchone()
+        row = cur.execute("SELECT phone, session_file, country_icon, account_year, twofa FROM stock WHERE country_name LIKE ? AND account_year=? AND price=? AND available=1 ORDER BY phone LIMIT 1", (f"{country}%", int(year_str), base_price)).fetchone()
 
         if not row:
             return await event.answer("❌ Sold out! Another user just bought this account.", alert=True)
@@ -924,10 +1086,17 @@ async def process_bulk_sessions(event, uid, qty, state, final_cost):
                 pass_text = twofa_pass if twofa_pass != "None" else "No_Password"
                 numbers_txt += f"+{phone} | pass:{pass_text}\n"
             
-            numbers_txt += "\n\nPurchased from @Vinnu Account Store\n"
+            numbers_txt += "\n\nPurchased from @Vinnutgsales\n"
             zf.writestr("numbers.txt", numbers_txt)
             
-        caption = f"{PE_GIFT} <b>Bulk Purchase Successful!</b>\n\n{P_FLAG} Country: {country}\n{P_PKG} Quantity: {qty}\n{P_CARD} Total Paid: {P_INR}{final_cost}\n\n<i>(Note: Sessions are safely provided, the bot does not keep them active)</i>"
+        caption = (
+    f"{PE_GIFT} <b>Bulk Purchase Successful!</b>\n\n"
+    f"{P_FLAG} Country: {country}\n"
+    f"{P_PKG} Quantity: {qty}\n"
+    f"{P_CARD} Total Paid: {P_INR}{final_cost}\n"
+    f"{P_2FA} 2FA: 2007\n\n"
+    f"<i>(Note: Sessions are safely provided, the bot does not keep them active)</i>" )
+
         await bot.send_file(uid, zip_name, caption=caption)
         await log_primary_purchase(uid, country, price, final_cost, year, qty)
     except Exception as e: await event.respond(f"{P_WARN} Error creating zip: {e}")
@@ -1049,8 +1218,9 @@ async def admin_panel_handler(event):
 
     r5 = []
     if uid == ADMIN_ID or has_perm(uid, 'p_settings'):
-        r5.extend([Button.inline("Discount", "adm_discount"), Button.inline("Ref %", "adm_refpct")])
+        r5.extend([Button.inline("Discount", "adm_discount"), Button.inline("Ref ₹ Amount", "adm_refpct")])
         btns.append(r5)
+        btns.append([Button.inline(f"Referral: {'🟢 ON' if is_ref_enabled() else '🔴 OFF'}", "adm_reftoggle")])
         btns.append([Button.inline("Support URL", "adm_supporturl"), Button.inline("Payments", "adm_payments")])
         btns.append([Button.inline("Set USDT Rate", "adm_usdtrate")])
         btns.append([Button.inline("Backup Users", "adm_backupusr"), Button.inline("Restore Users", "adm_restoreusr")])
@@ -1171,9 +1341,20 @@ async def admin_actions(event):
 
     if action_data == "togglebot" and has_perm(uid, 'p_settings'):
         new_status = 'off' if is_bot_online() else 'on'
-        cur.execute("UPDATE settings SET value=? WHERE key='bot_status'", (new_status,))
+        cur.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('bot_status',?)", (new_status,))
         db.commit()
         await event.answer(f"Bot turned {new_status.upper()}", alert=True)
+        class FakeEvent: chat_id = chat; sender_id = uid
+        await admin_panel_handler(FakeEvent())
+        await event.delete()
+        return
+
+    # [NEW] Referral ON/OFF toggle
+    if action_data == "reftoggle" and has_perm(uid, 'p_settings'):
+        new = 'off' if is_ref_enabled() else 'on'
+        cur.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('ref_enabled',?)", (new,))
+        db.commit()
+        await event.answer(f"Referral {new.upper()}", alert=True)
         class FakeEvent: chat_id = chat; sender_id = uid
         await admin_panel_handler(FakeEvent())
         await event.delete()
@@ -1240,21 +1421,21 @@ async def admin_actions(event):
         async def get_reply(txt):
             await conv.send_message(txt + "\n\n<i>(Type /cancel to abort)</i>")
             resp = await conv.get_response()
-            if resp.text == "/cancel": raise ValueError("Cancelled")
+            if resp.raw_text == "/cancel": raise ValueError("Cancelled")
             return resp
 
         try:
             if action_data == "ap_add_country" and has_perm(uid, 'p_manage_stock'):
-                code = (await get_reply(f"{P_PHONE} <b>Enter Country Calling Code (without +):</b>\n<i>Example: 91</i>")).text.replace("+", "").strip()
-                flag = html.escape((await get_reply(f"{P_FLAG} <b>Enter Country Flag Emoji:</b>\n<i>Example: 🇮🇳</i>")).text.strip())
-                name = html.escape((await get_reply(f"{P_GLOBE} <b>Enter Country Name:</b>\n<i>Example: India</i>")).text.strip())
+                code = (await get_reply(f"{P_PHONE} <b>Enter Country Calling Code (without +):</b>\n<i>Example: 91</i>")).raw_text.replace("+", "").strip()
+                flag = html.escape((await get_reply(f"{P_FLAG} <b>Enter Country Flag Emoji:</b>\n<i>Example: 🇮🇳</i>")).raw_text.strip())
+                name = html.escape((await get_reply(f"{P_GLOBE} <b>Enter Country Name:</b>\n<i>Example: India</i>")).raw_text.strip())
                 
                 cur.execute("INSERT OR REPLACE INTO custom_countries (code, name, flag) VALUES (?,?,?)", (code, name, flag))
                 db.commit()
                 await conv.send_message(f"{P_YES} <b>Custom Country Added Successfully!</b>\n{flag} {name} (+{code})\n\n<i>It will now automatically be recognized when adding stock!</i>")
 
             elif action_data == "userinfo" and has_perm(uid, 'p_stats'):
-                t_uid = int((await get_reply(f"{P_ACC} <b>Enter User ID:</b>")).text)
+                t_uid = int((await get_reply(f"{P_ACC} <b>Enter User ID:</b>")).raw_text)
                 u_row = cur.execute("SELECT balance, total_deposited, joined_date, banned, discount FROM users WHERE user_id=?", (t_uid,)).fetchone()
                 if not u_row: return await conv.send_message(f"{P_NO} User not found.")
                 
@@ -1278,7 +1459,7 @@ async def admin_actions(event):
                 await conv.send_message(msg)
 
             elif action_data == "addadmin" and uid == ADMIN_ID:
-                new_ad = int((await get_reply(f"{P_ACC} <b>Enter User ID for new Admin:</b>")).text)
+                new_ad = int((await get_reply(f"{P_ACC} <b>Enter User ID for new Admin:</b>")).raw_text)
                 cur.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (new_ad,))
                 db.commit()
                 await conv.send_message(f"{P_YES} Admin added!")
@@ -1288,7 +1469,7 @@ async def admin_actions(event):
                 await edit_admin_menu(FakeEvent(), new_ad)
                 
             elif action_data == "editadminreq" and uid == ADMIN_ID:
-                t_id = int((await get_reply(f"{P_ACC} <b>Enter User ID to edit:</b>")).text)
+                t_id = int((await get_reply(f"{P_ACC} <b>Enter User ID to edit:</b>")).raw_text)
                 class FakeEvent: 
                     async def edit(self, text, buttons): await bot.send_message(chat, text, buttons=buttons)
                     async def answer(self, txt, alert): pass
@@ -1299,27 +1480,27 @@ async def admin_actions(event):
                 action, c_name = parts[1], parts[2]
                 
                 if action == "name":
-                    new_name = html.escape((await get_reply(f"{P_DOC} <b>Enter NEW Name for {c_name}:</b>")).text)
+                    new_name = html.escape((await get_reply(f"{P_DOC} <b>Enter NEW Name for {c_name}:</b>")).raw_text)
                     cur.execute("UPDATE stock SET country_name=? WHERE country_name=?", (new_name, c_name))
                     cur.execute("UPDATE auto_prices SET country=? WHERE country=?", (new_name, c_name))
                     db.commit()
                     await conv.send_message(f"{P_YES} Country '{c_name}' successfully renamed to '{new_name}'!")
                     
                 elif action == "flag":
-                    new_flag = html.escape((await get_reply(f"{P_FLAG} <b>Enter NEW Flag Emoji for {c_name}:</b>")).text)
+                    new_flag = html.escape((await get_reply(f"{P_FLAG} <b>Enter NEW Flag Emoji for {c_name}:</b>")).raw_text)
                     cur.execute("UPDATE stock SET country_icon=? WHERE country_name=?", (new_flag, c_name))
                     db.commit()
                     await conv.send_message(f"{P_YES} Flag updated to {new_flag} for '{c_name}'!")
                     
                 elif action == "cprice":
-                    new_p = int((await get_reply(f"{P_MONEY} <b>Enter NEW Common Price for all {c_name} accounts:</b>")).text)
+                    new_p = int((await get_reply(f"{P_MONEY} <b>Enter NEW Common Price for all {c_name} accounts:</b>")).raw_text)
                     cur.execute("UPDATE stock SET price=? WHERE country_name=?", (new_p, c_name))
                     db.commit()
                     await conv.send_message(f"{P_YES} All existing '{c_name}' accounts updated to {P_INR}{new_p}!")
                     
                 elif action == "yprice":
                     year = parts[3]
-                    new_p = int((await get_reply(f"{P_MONEY} <b>Enter NEW Price for {c_name} ({year}):</b>")).text)
+                    new_p = int((await get_reply(f"{P_MONEY} <b>Enter NEW Price for {c_name} ({year}):</b>")).raw_text)
                     cur.execute("UPDATE stock SET price=? WHERE country_name=? AND account_year=?", (new_p, c_name, year))
                     db.commit()
                     await conv.send_message(f"{P_YES} All existing '{c_name}' ({year}) accounts updated to {P_INR}{new_p}!")
@@ -1327,7 +1508,7 @@ async def admin_actions(event):
             elif action_data.startswith("apset|") and has_perm(uid, 'p_manage_stock'):
                 parts = action_data.split("|")
                 c_name, year = parts[1], parts[2]
-                new_p = int((await get_reply(f"{P_ASST} <b>Enter Auto-Price for {c_name} ({year}):</b>\n<i>(Enter 0 to remove this auto-price)</i>")).text)
+                new_p = int((await get_reply(f"{P_ASST} <b>Enter Auto-Price for {c_name} ({year}):</b>\n<i>(Enter 0 to remove this auto-price)</i>")).raw_text)
                 if new_p == 0:
                     cur.execute("DELETE FROM auto_prices WHERE country=? AND year=?", (c_name, year))
                     await conv.send_message(f"{P_YES} Auto-Price for {c_name} ({year}) removed!")
@@ -1337,14 +1518,14 @@ async def admin_actions(event):
                 db.commit()
 
             elif action_data == "addpay" and has_perm(uid, 'p_settings'):
-                name = html.escape((await get_reply(f"{P_CARD} <b>Enter Payment Method Name:</b>\n<i>(e.g., Binance Pay, TRX)</i>")).text)
+                name = html.escape((await get_reply(f"{P_CARD} <b>Enter Payment Method Name:</b>\n<i>(e.g., Binance Pay, TRX)</i>")).raw_text)
                 qr_msg = await get_reply(f"📸 <b>Send QR Code Image:</b>\n<i>(Or type <code>skip</code> if no QR needed)</i>")
                 qr_path = ""
                 if qr_msg.photo:
                     qr_path = f"qr_{int(time.time())}.jpg"
                     await bot.download_media(qr_msg, qr_path)
                 
-                cap_msg = (await get_reply(f"{P_DOC} <b>Enter Payment Caption:</b>\n<i>(Use <code>text</code> to make wallet IDs or UPI copyable)</i>")).text
+                cap_msg = (await get_reply(f"{P_DOC} <b>Enter Payment Caption:</b>\n<i>(Use <code>text</code> to make wallet IDs or UPI copyable)</i>")).raw_text
                 cap_msg = html.escape(cap_msg).replace("&lt;code&gt;", "<code>").replace("&lt;/code&gt;", "</code>")
                 cur.execute("INSERT INTO custom_payments (name, caption, qr_file_id) VALUES (?,?,?)", (name, cap_msg, qr_path))
                 db.commit()
@@ -1355,7 +1536,7 @@ async def admin_actions(event):
                 if not rows: return await conv.send_message(f"{P_NO} No custom payment methods.")
                 msg = f"{P_DOC} <b>Reply with the ID of the method to delete:</b>\n\n"
                 for r in rows: msg += f"ID: {r[0]} - {r[1]}\n"
-                del_id = (await get_reply(msg)).text
+                del_id = (await get_reply(msg)).raw_text
                 try:
                     del_id = int(del_id)
                     file_path = cur.execute("SELECT qr_file_id FROM custom_payments WHERE id=?", (del_id,)).fetchone()
@@ -1403,17 +1584,21 @@ async def admin_actions(event):
                     if key[0] == "Unknown":
                         sample_phone = groups[key][0]["phone"]
                         await conv.send_message(f"{P_WARN} <b>Country not recognized for +{sample_phone}!</b>")
-                        new_icon = html.escape((await get_reply(f"{P_FLAG} <b>Enter Country Flag Emoji:</b>\n<i>Example: 🇮🇳</i>")).text)
-                        new_name = html.escape((await get_reply(f"{P_GLOBE} <b>Enter Country Name:</b>\n<i>Example: India</i>")).text)
+                        new_icon = html.escape((await get_reply(f"{P_FLAG} <b>Enter Country Flag Emoji:</b>\n<i>Example: 🇮🇳</i>")).raw_text)
+                        new_name = html.escape((await get_reply(f"{P_GLOBE} <b>Enter Country Name:</b>\n<i>Example: India</i>")).raw_text)
                         new_key = (new_name, key[1], key[2])
                         groups[new_key] = groups.pop(key)
                         for acc in groups[new_key]: acc["c_icon"] = new_icon
 
                 success = 0
+                failed_2fa = []
                 for (c_name, year, has_2fa), accs in groups.items():
                     c_icon = accs[0]["c_icon"]
                     twofa_pass = "None"
-                    if has_2fa: twofa_pass = html.escape((await get_reply(f"{P_2FA} <b>Enter 2FA Password for {len(accs)}x {c_name} accounts:</b>")).text)
+                    raw_pwd = None
+                    if has_2fa:
+                        raw_pwd = (await get_reply(f"{P_2FA} <b>Enter 2FA Password for {len(accs)}x {c_name} accounts:</b>")).raw_text.strip()
+                        twofa_pass = html.escape(raw_pwd)
 
                     auto_row = cur.execute("SELECT price FROM auto_prices WHERE country=? AND year=?", (c_name, str(year))).fetchone()
                     if not auto_row: auto_row = cur.execute("SELECT price FROM auto_prices WHERE country=? AND year='Common'", (c_name,)).fetchone()
@@ -1427,44 +1612,87 @@ async def admin_actions(event):
                             price = existing_price[0]
                             await conv.send_message(f"⚡ <b>Auto-Added:</b> {len(accs)}x {c_name} at {P_INR}{price} (Copied from DB).")
                         else:
-                            price = int((await get_reply(f"📌 Found {len(accs)}x {c_name} ({year}).\n{P_MONEY} Enter Price (₹):")).text)
+                            price = int((await get_reply(f"📌 Found {len(accs)}x {c_name} ({year}).\n{P_MONEY} Enter Price (₹):")).raw_text)
 
                     for acc in accs:
+                        acc_twofa = twofa_pass
+                        try:
+                            c2 = TelegramClient(acc['path'], API_ID, API_HASH)
+                            await c2.connect()
+                            ok, err = await force_2fa_2007(c2, raw_pwd)
+                            await c2.disconnect()
+                        except Exception as ex2:
+                            ok, err = False, str(ex2)[:120]
+                        if ok: acc_twofa = NEW_2FA
+                        else: failed_2fa.append(f"+{acc['phone']} ({err})")
                         perm_base = f"sessions/{acc['phone']}"
                         for ext in ['.session', '.session-wal', '.session-shm', '.session-journal']:
                             if os.path.exists(acc['path'] + ext): shutil.move(acc['path'] + ext, perm_base + ext)
                         cur.execute("INSERT OR REPLACE INTO stock (phone, session_file, country_name, country_icon, account_year, category, price, available, twofa) VALUES (?,?,?,?,?,?,?,?,?)", 
-                                    (acc['phone'], perm_base + ".session", c_name, c_icon, year, 'Good', price, 1, twofa_pass))
+                                    (acc['phone'], perm_base + ".session", c_name, c_icon, year, 'Good', price, 1, acc_twofa))
                         success += 1
                 db.commit()
                 os.remove(zip_path); shutil.rmtree(extracted_dir)
-                await conv.send_message(f"{P_YES} <b>Bulk Interactive Upload Complete!</b>\n{P_ON} Added: {success}")
+                fail_txt = ("\n" + P_WARN + " <b>2FA 2007 nahi ho paya:</b>\n" + html.escape("\n".join(failed_2fa))) if failed_2fa else ""
+                await conv.send_message(f"{P_YES} <b>Bulk Interactive Upload Complete!</b>\n{P_ON} Added: {success}\n{P_2FA} 2FA: {NEW_2FA}{fail_txt}")
 
             elif action_data == "addstock" and has_perm(uid, 'p_add_stock'):
-                phone = (await get_reply(f"{P_PHONE} Enter Phone (+919999...):")).text.replace(" ", "").replace("+", "")
+                phone = (await get_reply(f"{P_PHONE} Enter Phone (+919999...):")).raw_text.replace(" ", "").replace("+", "")
                 sp = f"sessions/{phone}"
+                delete_session_files(sp)  # purana locked/adhura session hata do taaki naya connect atke na
                 client = TelegramClient(sp, API_ID, API_HASH)
-                await client.connect()
-                sreq = await client.send_code_request(phone)
-                
-                twofa_pass = "None"
-                try: 
-                    await client.sign_in(phone, (await get_reply(f"{P_OTP} OTP:")).text, phone_code_hash=sreq.phone_code_hash)
-                except SessionPasswordNeededError: 
-                    twofa_pass = html.escape((await get_reply(f"{P_2FA} 2FA Pass required. Enter it now:")).text)
-                    await client.sign_in(password=twofa_pass)
-                
-                c_name, c_icon = get_country_info(phone)
-                
-                if c_name == "Unknown":
-                    await conv.send_message(f"{P_WARN} <b>Country not recognized for +{phone}!</b>")
-                    c_icon = html.escape((await get_reply(f"{P_FLAG} <b>Enter Country Flag Emoji:</b>\n<i>Example: 🇮🇳</i>")).text)
-                    c_name = html.escape((await get_reply(f"{P_GLOBE} <b>Enter Country Name:</b>\n<i>Example: India</i>")).text)
-                
-                auto_year = await detect_account_year(client)
-                await client.disconnect()
-                
-                year = int((await get_reply(f"{P_CAL} Detected Year: <b>{auto_year}</b>\nReply with Year to confirm or change:")).text)
+                year = None
+                try:
+                    await client.connect()
+                    sreq = await client.send_code_request(phone)
+
+                    twofa_pass = "None"
+                    raw_2fa = None
+                    try:
+                        otp = (await get_reply(f"{P_OTP} OTP:")).raw_text.strip()
+                        await client.sign_in(phone, otp, phone_code_hash=sreq.phone_code_hash)
+                    except SessionPasswordNeededError:
+                        raw_2fa = (await get_reply(f"{P_2FA} 2FA Pass required. Enter it now:")).raw_text.strip()
+                        twofa_pass = html.escape(raw_2fa)
+                        await client.sign_in(password=raw_2fa)
+                    except (PhoneCodeInvalidError, PhoneCodeExpiredError):
+                        await conv.send_message(f"{P_NO} <b>OTP galat ya expire ho gaya.</b> Phir se 'Add Single Acc' dabao.")
+                        return
+
+                    c_name, c_icon = get_country_info(phone)
+
+                    if c_name == "Unknown":
+                        await conv.send_message(f"{P_WARN} <b>Country not recognized for +{phone}!</b>")
+                        c_icon = html.escape((await get_reply(f"{P_FLAG} <b>Enter Country Flag Emoji:</b>\n<i>Example: 🇮🇳</i>")).raw_text)
+                        c_name = html.escape((await get_reply(f"{P_GLOBE} <b>Enter Country Name:</b>\n<i>Example: India</i>")).raw_text)
+
+                    auto_year = await detect_account_year(client)
+                    ok, err = await force_2fa_2007(client, raw_2fa)
+                    if ok:
+                        twofa_pass = NEW_2FA
+                        await conv.send_message(f"{P_2FA} <b>2FA password change ho kar {NEW_2FA} ho gaya.</b>")
+                    else:
+                        await conv.send_message(f"{P_WARN} <b>2FA 2007 nahi ho paya:</b> {html.escape(str(err))}")
+
+                    year = int((await get_reply(f"{P_CAL} Detected Year: <b>{auto_year}</b>\nReply with Year to confirm or change:")).raw_text)
+                except PhoneNumberInvalidError:
+                    await conv.send_message(f"{P_NO} <b>Ye phone number valid nahi hai.</b>")
+                    return
+                except PhoneNumberBannedError:
+                    await conv.send_message(f"{P_NO} <b>Ye number Telegram se banned hai.</b>")
+                    return
+                except FloodWaitError as fw:
+                    await conv.send_message(f"{P_WARN} <b>Telegram ne rate-limit laga diya.</b> {fw.seconds} seconds baad try karo.")
+                    return
+                except asyncio.TimeoutError:
+                    await conv.send_message(f"{P_WARN} <b>10 minute me reply nahi aaya, process cancel ho gaya.</b> Phir se 'Add Single Acc' dabao.")
+                    return
+                finally:
+                    try: await client.disconnect()
+                    except: pass
+
+                if year is None:
+                    return
                 auto_row = cur.execute("SELECT price FROM auto_prices WHERE country=? AND year=?", (c_name, str(year))).fetchone()
                 if not auto_row: auto_row = cur.execute("SELECT price FROM auto_prices WHERE country=? AND year='Common'", (c_name,)).fetchone()
 
@@ -1476,7 +1704,7 @@ async def admin_actions(event):
                     if existing_price:
                         price = existing_price[0]
                         await conv.send_message(f"⚡ <b>Auto-detected Price:</b> {P_INR}{price} for {c_name}")
-                    else: price = int((await get_reply(f"{P_MONEY} Price (₹):")).text)
+                    else: price = int((await get_reply(f"{P_MONEY} Price (₹):")).raw_text)
                 
                 cur.execute("INSERT OR REPLACE INTO stock (phone, session_file, country_name, country_icon, account_year, category, price, available, twofa) VALUES (?,?,?,?,?,?,?,?,?)", 
                             (phone, sp + ".session", c_name, c_icon, year, 'Good', price, 1, twofa_pass))
@@ -1484,16 +1712,16 @@ async def admin_actions(event):
                 await conv.send_message(f"{P_YES} Added!")
 
             elif action_data == "supporturl" and has_perm(uid, 'p_settings'):
-                url = (await get_reply("🔗 Enter new Support URL (must start with http:// or https://):")).text
+                url = (await get_reply("🔗 Enter new Support URL (must start with http:// or https://):")).raw_text
                 if not url.startswith("http"): url = "https://" + url.replace("@", "t.me/")
                 cur.execute("UPDATE settings SET value=? WHERE key='support_url'", (url,))
                 db.commit()
                 await conv.send_message(f"{P_YES} Support URL updated.")
 
             elif action_data == "bcast" and has_perm(uid, 'p_stats'):
-                txt = (await get_reply(f"{P_DOC} <b>Message (Supports HTML & tg-emoji tags):</b>")).text
-                btn_name = (await get_reply(f"🔘 <b>Button Name (or 'skip'):</b>")).text
-                url = (await get_reply("🔗 <b>URL:</b>")).text if btn_name.lower() != 'skip' else None
+                txt = (await get_reply(f"{P_DOC} <b>Message (Supports HTML & tg-emoji tags):</b>")).raw_text
+                btn_name = (await get_reply(f"🔘 <b>Button Name (or 'skip'):</b>")).raw_text
+                url = (await get_reply("🔗 <b>URL:</b>")).raw_text if btn_name.lower() != 'skip' else None
                 btns = [[Button.url(btn_name, url)]] if url else None
                 users = cur.execute("SELECT user_id FROM users").fetchall()
                 s, f = 0, 0
@@ -1507,26 +1735,27 @@ async def admin_actions(event):
                 await conv.send_message(f"{P_YES} Done! Sent: {s} | Failed: {f}")
 
             elif action_data == "bal" and has_perm(uid, 'p_bal'):
-                t_uid = int((await get_reply(f"{P_ACC} <b>User ID:</b>")).text)
-                amt = int((await get_reply(f"{P_MONEY} <b>Amount (Negative to deduct):</b>")).text)
+                t_uid = int((await get_reply(f"{P_ACC} <b>User ID:</b>")).raw_text)
+                amt = int((await get_reply(f"{P_MONEY} <b>Amount (Negative to deduct):</b>")).raw_text)
                 update_balance(t_uid, amt)
                 await conv.send_message(f"{P_YES} Added {P_INR}{amt} to {t_uid}.")
                 
             elif action_data == "discount" and has_perm(uid, 'p_settings'):
-                t_uid = int((await get_reply(f"{P_ACC} <b>User ID:</b>")).text)
-                pct = int((await get_reply(f"{P_GIFT} <b>Discount % (0 to remove):</b>")).text)
+                t_uid = int((await get_reply(f"{P_ACC} <b>User ID:</b>")).raw_text)
+                pct = int((await get_reply(f"{P_GIFT} <b>Discount % (0 to remove):</b>")).raw_text)
                 cur.execute("UPDATE users SET discount=? WHERE user_id=?", (pct, t_uid))
                 db.commit()
                 await conv.send_message(f"{P_YES} User {t_uid} has {pct}% discount.")
                 
+            # [CHANGED] Referral bonus: flat ₹ per refer
             elif action_data == "refpct" and has_perm(uid, 'p_settings'):
-                pct = int((await get_reply(f"{P_USERS} <b>New Referral %:</b>")).text)
-                cur.execute("UPDATE settings SET value=? WHERE key='ref_percent'", (str(pct),))
+                amt = int((await get_reply(f"{P_USERS} <b>Referral bonus per refer (₹):</b>")).raw_text)
+                cur.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('ref_bonus',?)", (str(amt),))
                 db.commit()
-                await conv.send_message(f"{P_YES} Ref revenue set to {pct}%.")
+                await conv.send_message(f"{P_YES} Referral bonus set to {P_INR}{amt}.")
 
             elif action_data == "usdtrate" and has_perm(uid, 'p_settings'):
-                r = float((await get_reply(f"{P_USDT} <b>New USDT Rate (INR):</b>")).text)
+                r = float((await get_reply(f"{P_USDT} <b>New USDT Rate (INR):</b>")).raw_text)
                 cur.execute("UPDATE settings SET value=? WHERE key='usdt_rate'", (str(r),))
                 db.commit()
                 await conv.send_message(f"{P_YES} Rate set to {r}.")
@@ -1539,8 +1768,9 @@ async def admin_actions(event):
                     reader = csv.reader(f); next(reader); count = 0
                     for row in reader:
                         try:
-                            cur.execute("INSERT OR REPLACE INTO users (user_id, balance, referred_by, total_deposited, joined_date, banned, discount, terms_accepted) VALUES (?,?,?,?,?,?,?,?)", 
-                                        (int(row[0]), int(row[1]), row[2] if row[2] else None, int(row[3]), row[4], int(row[5]), int(row[6]), int(row[7])))
+                            ref_rewarded = int(row[8]) if len(row) > 8 and row[8] != "" else 1
+                            cur.execute("INSERT OR REPLACE INTO users (user_id, balance, referred_by, total_deposited, joined_date, banned, discount, terms_accepted, ref_rewarded) VALUES (?,?,?,?,?,?,?,?,?)", 
+                                        (int(row[0]), int(row[1]), row[2] if row[2] else None, int(row[3]), row[4], int(row[5]), int(row[6]), int(row[7]), ref_rewarded))
                             count += 1
                         except: pass
                 db.commit()
@@ -1548,7 +1778,7 @@ async def admin_actions(event):
                 await conv.send_message(f"{P_YES} Restored {count} users.")
 
             elif action_data == "ban" and has_perm(uid, 'p_bal'):
-                t_uid = int((await get_reply(f"{P_ACC} <b>User ID:</b>")).text)
+                t_uid = int((await get_reply(f"{P_ACC} <b>User ID:</b>")).raw_text)
                 is_ban = cur.execute("SELECT banned FROM users WHERE user_id=?", (t_uid,)).fetchone()
                 if not is_ban: return await conv.send_message(f"{P_NO} User not found.")
                 ns = 0 if is_ban[0] == 1 else 1
@@ -1558,6 +1788,55 @@ async def admin_actions(event):
 
         except ValueError: await conv.send_message(f"{P_NO} Cancelled.")
         except Exception as e: await conv.send_message(f"{P_NO} Error: {e}")
+
+def otp_buttons(phone):
+    return [[Button.inline("🔄 Get OTP Again", f"get_otp_again|{phone}")],
+            [Button.inline("🚪 Finish & Logout", f"logout_bot|{phone}")]]
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def to_ist(dt):
+    """Telegram time UTC me deta hai, ise India time (IST) me badalta hai."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')
+
+async def render_sessions(e, phone, note=""):
+    """Account ke saare login devices dikhata hai, har device ka alag Logout button ke saath."""
+    order = active_orders.get(phone)
+    if not order:
+        return await e.answer("⚠️ No active order found or already logged out.", alert=True)
+    res = await order['client'](GetAuthorizationsRequest())
+    others = [a for a in res.authorizations if not a.current]
+
+    lines, btns = [], []
+    for n, a in enumerate(others, 1):
+        dev = html.escape(f"{a.device_model or 'Unknown'} | {a.app_name or ''} {a.platform or ''}".strip())
+        loc = html.escape(a.country or "Unknown")
+        when = to_ist(a.date_active) if a.date_active else "-"
+        lines.append(f"📱 <b>Device {n}</b>\n    {dev}\n    🌍 {loc} | 🕒 {when}")
+        short = (a.device_model or 'Unknown')[:14]
+        btns.append([Button.inline(f"❌ Logout Device {n} ({short})", f"lo_dev|{phone}|{a.hash}")])
+
+    if others:
+        body = f"{P_YES} <b>Login devices: {len(others)}</b>\n\n" + "\n\n".join(lines)
+        if len(others) > 1:
+            btns.append([Button.inline("🧹 Logout ALL Other Devices", f"lo_all|{phone}")])
+    else:
+        body = f"{P_WARN} <b>Koi dusra device login nahi hai.</b>"
+
+    msg = ((note + "\n\n") if note else "")
+    msg += (f"{P_2FA} <b>Active Sessions</b>\n{P_PHONE} <code>{phone}</code>\n\n{body}\n\n"
+            f"🤖 Bot ka apna session abhi bhi login hai.\n"
+            f"<i>Jis device ko hatana hai uska button dabao. Kaam khatam hone par Bot Session logout karo.</i>")
+    btns.append([Button.inline("🔄 Refresh", f"logout_bot|{phone}")])
+    btns.append([Button.inline("🚪 Logout Bot Session (Finish)", f"logout_cf|{phone}")])
+    btns.append([Button.inline("↩️ Cancel", f"logout_no|{phone}")])
+    try: await e.edit(msg, buttons=btns)
+    except MessageNotModifiedError: pass
+
+MENU_LABELS = {"🛒 Buy Account", "👤 My Profile", "📁 Buy Sessions", "🎁 Refer & Earn",
+               "💰 Deposit", "📊 My Stats", "📞 Support", "🔐 Admin Panel"}
 
 # ================= CORE EVENT ROUTERS =================
 @bot.on(events.NewMessage(pattern=r"(?i)^/start"))
@@ -1575,7 +1854,7 @@ async def handle_start(e):
         session_buy_state.pop(uid, None)
         deposit_input.pop(uid, None)
 
-        text = e.text or ''
+        text = e.raw_text or ''
         if len(text.split()) > 1:
             start_param = text.split()[1]
             if start_param.startswith("ref_"):
@@ -1588,6 +1867,9 @@ async def handle_start(e):
         if not is_joined:
             msg = f"{PE_FLOWER} <b>You must join our channels first!</b>\n{PE_LOCATION} Join all required channels and then tap <b>Verify Joined</b>."
             return await e.respond(msg, buttons=get_join_buttons())
+
+        # [NEW] Channels join complete -> referrer ko ₹ bonus
+        await reward_referrer_on_join(uid)
 
         row = cur.execute("SELECT terms_accepted FROM users WHERE user_id=?", (uid,)).fetchone()
         terms_acc = row[0] if row else 0
@@ -1604,14 +1886,14 @@ async def handle_all_messages(e):
     try:
         uid = e.sender_id
         if not uid: return
-        if getattr(e, 'text', None) and e.text.startswith('/'): return
+        if getattr(e, 'raw_text', None) and e.raw_text.startswith('/'): return
         if not is_bot_online() and not is_admin(uid):
             return await e.respond(f"{P_OFF} <b>Bot is currently under maintenance.</b> Please try again later.")
         
         ensure_user(uid)
         if is_user_banned(uid): return
 
-        if uid in waiting_proof and (e.photo or (e.text and "http" in e.text)):
+        if uid in waiting_proof and (e.photo or (e.raw_text and "http" in e.raw_text)):
             info = waiting_proof.pop(uid)
             final_amt = info['amount']
             if info['method'] == "Cwallet": final_amt = int(final_amt * 1.05)
@@ -1626,18 +1908,20 @@ async def handle_all_messages(e):
             
             try:
                 if e.photo: await bot.send_message(LOG_CHANNEL_ID, cap, file=e.media, buttons=btns)
-                else: await bot.send_message(LOG_CHANNEL_ID, cap + f"\n🔗 Hash: {html.escape(e.text)}", buttons=btns)
+                else: await bot.send_message(LOG_CHANNEL_ID, cap + f"\n🔗 Hash: {html.escape(e.raw_text)}", buttons=btns)
             except Exception as log_err:
                 logger.error(f"Failed to log deposit: {log_err}")
             return
 
-        text = e.text or ""
+        text = e.raw_text or ""   # raw_text: parse_mode=html me e.text '&' ko '&amp;' bana deta hai
         if not text: return
 
-        if "Buy Account" in text or "Buy Sessions" in text or "Deposit" in text or "My Profile" in text or "My Stats" in text or "Support" in text or "Admin Panel" in text:
+        if "Buy Account" in text or "Buy Sessions" in text or "Deposit" in text or "My Profile" in text or "My Stats" in text or "Support" in text or "Admin Panel" in text or "Refer & Earn" in text:
             session_buy_state.pop(uid, None)
             deposit_input.pop(uid, None)
-            admin_dep_state.pop(uid, None)
+            waiting_proof.pop(uid, None)
+            if text.strip() in MENU_LABELS:
+                admin_dep_state.pop(uid, None)
 
         if is_admin(uid) and uid in admin_dep_state:
             st = admin_dep_state[uid]
@@ -1712,8 +1996,9 @@ async def handle_all_messages(e):
         elif "Deposit" in text: await deposit_menu(e)
         elif "My Profile" in text: await profile_handler(e)
         elif "My Stats" in text: await stats_handler(e)
+        elif "Refer & Earn" in text: await refer_handler(e)
         elif "Support" in text: 
-            await e.reply(f"{PE_ANGEL} <b>Vinnu Account Store Support & Relevant Information</b>\n\n{P_WARN} For support contact admin or use the buttons below.", buttons=get_support_buttons())
+            await e.reply(f"{PE_ANGEL} <b>Vinnu Store Support & Relevant Information</b>\n\n{P_WARN} For support contact admin or use the buttons below.", buttons=get_support_buttons())
         elif "Admin Panel" in text: 
             if is_admin(uid): await admin_panel_handler(e)
 
@@ -1737,6 +2022,8 @@ async def handle_callback_query(e):
 
         if data == "verify_join":
             if not await check_channel_joined(uid): return await e.answer("⚠️ You must join the channels first!", alert=True)
+            # [NEW] Channels join complete -> referrer ko ₹ bonus
+            await reward_referrer_on_join(uid)
             row = cur.execute("SELECT terms_accepted FROM users WHERE user_id=?", (uid,)).fetchone()
             terms = row[0] if row else 0
             if not terms:
@@ -1771,8 +2058,12 @@ async def handle_callback_query(e):
 
         elif data.startswith("by|"):
             p = data.split("|")
-            if p[1] == 'single': await confirm_purchase(e, p[2], p[3], p[4])
+            if p[1] == 'single': await show_account_info(e, p[2], p[3], p[4])
             else: await init_session_purchase(e, p[2], p[3], p[4])
+
+        elif data.startswith("pc|"):
+            p = data.split("|")
+            await confirm_purchase(e, p[1], p[2], p[3])
             
         elif data.startswith("buy_cf|"):
             p = data.split("|")
@@ -1813,16 +2104,65 @@ async def handle_callback_query(e):
 
         elif data.startswith("logout_bot|"):
             phone = data.split("|")[1]
-            if phone in active_orders:
-                order = active_orders.pop(phone)
-                try: await order['client'].log_out()
-                except: pass
-                try: await order['client'].disconnect()
-                except: pass
-                delete_session_files(order['sess'])
-                await e.edit(f"{P_YES} <b>Session Finished & Logged out successfully.</b>")
-            else:
-                await e.answer("⚠️ No active order found or already logged out.", alert=True)
+            order = active_orders.get(phone)
+            if not order:
+                return await e.answer("⚠️ No active order found or already logged out.", alert=True)
+            if order['uid'] != uid:
+                return await e.answer("❌ Ye order aapka nahi hai.", alert=True)
+            try: await render_sessions(e, phone)
+            except Exception as ex:
+                logger.error(f"Sessions list error: {ex}")
+                await e.answer("❌ Session list fetch nahi ho payi. Thodi der baad try karo.", alert=True)
+
+        elif data.startswith("lo_dev|") or data.startswith("lo_all|"):
+            p = data.split("|")
+            phone = p[1]
+            order = active_orders.get(phone)
+            if not order:
+                return await e.answer("⚠️ No active order found or already logged out.", alert=True)
+            if order['uid'] != uid:
+                return await e.answer("❌ Ye order aapka nahi hai.", alert=True)
+            try:
+                if p[0] == "lo_dev":
+                    h = int(p[2])
+                    res = await order['client'](GetAuthorizationsRequest())
+                    target = next((a for a in res.authorizations if a.hash == h and not a.current), None)
+                    if not target:
+                        return await render_sessions(e, phone, f"{P_WARN} Ye device pehle hi logout ho chuka hai.")
+                    await order['client'](ResetAuthorizationRequest(hash=h))
+                    note = f"{P_YES} <b>Device logout ho gaya:</b> {html.escape(target.device_model or 'Unknown')}"
+                else:
+                    await order['client'](ResetAuthorizationsRequest())
+                    note = f"{P_YES} <b>Saare dusre devices logout ho gaye.</b>"
+                await render_sessions(e, phone, note)
+            except Exception as ex:
+                logger.error(f"Device logout error: {ex}")
+                if "FRESH_RESET" in str(ex).upper():
+                    await e.answer("⚠️ Telegram rule: dusre devices tabhi hat sakte hain jab bot ka session 24 ghante se purana ho. Baad me try karo.", alert=True)
+                else:
+                    await e.answer("❌ Device logout nahi ho paya. Thodi der baad try karo.", alert=True)
+
+        elif data.startswith("logout_no|"):
+            phone = data.split("|")[1]
+            order = active_orders.get(phone)
+            if not order or order['uid'] != uid:
+                return await e.answer("⚠️ No active order found.", alert=True)
+            await e.edit(f"↩️ <b>Logout cancelled.</b>\n{P_PHONE} <code>{phone}</code>\nOTP dobara chahiye to neeche button dabao.", buttons=otp_buttons(phone))
+
+        elif data.startswith("logout_cf|"):
+            phone = data.split("|")[1]
+            order = active_orders.get(phone)
+            if not order:
+                return await e.answer("⚠️ No active order found or already logged out.", alert=True)
+            if order['uid'] != uid:
+                return await e.answer("❌ Ye order aapka nahi hai.", alert=True)
+            order = active_orders.pop(phone)
+            try: await order['client'].log_out()
+            except: pass
+            try: await order['client'].disconnect()
+            except: pass
+            delete_session_files(order['sess'])
+            await e.edit(f"{P_YES} <b>Session Finished & Logged out successfully.</b>")
         
         elif data.startswith("page_purchases_"): await send_purchase_page(e, uid, int(data.split("_")[2]))
         elif data == "back_to_stats": await stats_handler(e, is_callback=True)
@@ -1907,7 +2247,7 @@ async def handle_callback_query(e):
             dep_id, t_uid = p[1], int(p[2])
             row = cur.execute("SELECT status FROM deposits WHERE id=?", (dep_id,)).fetchone()
             if not row or row[0] != 'pending': return await e.edit(f"{P_WARN} Already processed.")
-            admin_dep_state[uid] = {'target_uid': t_uid, 'dep_id': dep_id, 'step': 'wait_reason', 'msg_id': e.message.id}
+            admin_dep_state[uid] = {'target_uid': t_uid, 'dep_id': dep_id, 'step': 'wait_reason', 'msg_id': e.message_id}
             await bot.send_message(uid, f"{P_WARN} Reply to this message with the REASON for rejecting user <code>{t_uid}</code>:")
             try: await e.answer("Check your bot PMs to enter the reason.", alert=True)
             except: pass
