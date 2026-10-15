@@ -64,9 +64,10 @@ def env_list(name, default_csv):
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+# SECRETS: sirf .env / environment se aayenge (code me kabhi hardcode mat karo)
 API_ID = env_int("API_ID", )
-API_HASH = os.getenv("API_HASH"," ")
-BOT_TOKEN = os.getenv("BOT_TOKEN", " ")
+API_HASH = os.getenv("API_HASH", "")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_ID = env_int("ADMIN_ID", 8752870238)
 
 # CHANNELS
@@ -86,6 +87,32 @@ UPI_ID = os.getenv("UPI_ID", "usadevi@yapl")
 
 OTP_REGEX = r"\b\d{4,8}\b"
 AUTO_CANCEL_SECONDS = 600
+
+# Telegram ke apne security/system notifications (login alert, 2FA change waghera) me bhi
+# 4-8 digit numbers hote hain (jaise saal "2026"), jo galti se OTP samajh liye ja sakte hain.
+# Ye phrases wale messages ko OTP ke liye kabhi nahi dekha jata.
+OTP_IGNORE_PHRASES = (
+    "login detected", "new login", "new device", "two-step verification",
+    "active sessions", "account from a new device", "account was used to",
+    "settings changed", "password and/or email were changed",
+    "if this wasn't you", "if you didn't request this", "if somebody logged in",
+    "if you think that somebody", "unusual activity", "someone tried to",
+    "this device was logged in", "was deleted", "terminate that session",
+)
+
+def extract_login_code(msgs, start_time):
+    """777000 (Telegram) ke messages me se sirf ASLI login code dhoondta hai,
+    security/2FA notifications ko ignore karta hai (warna 'saal 2026' jaisa number OTP ban sakta hai)."""
+    for m in msgs:
+        if not m.message or not m.date or m.date.timestamp() <= start_time - 10:
+            continue
+        low = m.message.lower()
+        if any(p in low for p in OTP_IGNORE_PHRASES):
+            continue
+        match = re.search(OTP_REGEX, m.message)
+        if match:
+            return match.group()
+    return None
 
 # ================= PREMIUM EMOJIS =================
 USE_PREMIUM_EMOJIS = os.getenv("USE_PREMIUM_EMOJIS", "1").strip().lower() not in {"0", "false", "no", "off"}
@@ -119,7 +146,7 @@ PE_LOCATION = tg_emoji("location", "📍")
 PE_FLOWER = tg_emoji("flower", "🌸")
 PE_CHECK = tg_emoji("check", "✅")
 PE_CROWN = tg_emoji("crown", "👑")
-PE_KISS = tg_emoji("kiss", "😘")
+PE_KISS = tg_emoji("kiss", " ")
 PE_SKULL = tg_emoji("skull", "💀")
 PE_XMAS = tg_emoji("xmas", "🎄")
 PE_MONKEY = tg_emoji("monkey", "🐵")
@@ -163,6 +190,10 @@ P_SOS = '🆘'
 P_ASST = '🤖'
 P_ACC = '👤'
 
+# ================= LOGGING (config validate se pehle chahiye) =================
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def validate_config():
     missing = []
@@ -179,7 +210,7 @@ def validate_config():
     if missing:
         raise RuntimeError(
             "Missing/invalid required config: " + ", ".join(missing) +
-            ". Set them via environment variables before starting the bot."
+            ". Set them in .env file (API_ID, API_HASH, BOT_TOKEN) before starting the bot."
         )
     if not CHECK_CHANNELS:
         logger.warning("CHECK_CHANNELS is empty; join verification will be ineffective.")
@@ -262,12 +293,9 @@ class StyledHTML:
         return tl_html.unparse(text, entities)
 
 # ================= INITIALIZATION =================
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 os.makedirs("sessions", exist_ok=True)
 
-session_name = f"bot_session_{BOT_TOKEN.split(':')[0]}"
+session_name = f"bot_session_{BOT_TOKEN.split(':')[0] if BOT_TOKEN else 'unset'}"
 bot = TelegramClient(session_name, API_ID, API_HASH)
 bot.parse_mode = StyledHTML()
 
@@ -317,10 +345,11 @@ def setup_db():
         added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS auto_prices (
+        category TEXT,
         country TEXT,
         year TEXT,
         price INTEGER,
-        PRIMARY KEY (country, year)
+        PRIMARY KEY (category, country, year)
     );
     CREATE TABLE IF NOT EXISTS deposits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -378,6 +407,28 @@ try:
     db.commit()
 except sqlite3.OperationalError:
     pass
+
+# [NEW] Purani stock jisme category set nahi thi (default 'Good'), use 'spam_free' bucket me daal do
+try:
+    cur.execute("UPDATE stock SET category='spam_free' WHERE category IS NULL OR category NOT IN ('spam_free','limit_spam','premium')")
+    db.commit()
+except sqlite3.OperationalError:
+    pass
+
+# [NEW] auto_prices ko category-wise banao (purane prices teeno categories me copy honge)
+try:
+    cols = [r[1] for r in cur.execute("PRAGMA table_info(auto_prices)").fetchall()]
+    if 'category' not in cols:
+        cur.execute("ALTER TABLE auto_prices RENAME TO auto_prices_old")
+        cur.execute("""CREATE TABLE auto_prices (
+            category TEXT, country TEXT, year TEXT, price INTEGER,
+            PRIMARY KEY (category, country, year))""")
+        for _cat in ('spam_free', 'limit_spam', 'premium'):
+            cur.execute("INSERT OR IGNORE INTO auto_prices SELECT ?, country, year, price FROM auto_prices_old", (_cat,))
+        cur.execute("DROP TABLE auto_prices_old")
+        db.commit()
+except Exception as ex:
+    logger.error(f"auto_prices migration error: {ex}")
 
 # ================= HELPER FUNCTIONS =================
 def is_bot_online():
@@ -534,6 +585,17 @@ async def force_2fa_2007(client, old_password=None):
         return True, None
     except Exception as ex:
         return False, str(ex)[:120]
+
+# [NEW] Category-wise price lookup (auto price -> existing stock price)
+def lookup_auto_price(category, c_name, year):
+    row = cur.execute("SELECT price FROM auto_prices WHERE category=? AND country=? AND year=?", (category, c_name, str(year))).fetchone()
+    if not row:
+        row = cur.execute("SELECT price FROM auto_prices WHERE category=? AND country=? AND year='Common'", (category, c_name)).fetchone()
+    return row[0] if row else None
+
+def lookup_existing_price(category, c_name):
+    row = cur.execute("SELECT price FROM stock WHERE country_name=? AND category=? LIMIT 1", (c_name, category)).fetchone()
+    return row[0] if row else None
 
 # ================= REFERRAL SYSTEM (FLAT ₹ PER REFER) =================
 def is_ref_enabled():
@@ -793,7 +855,7 @@ async def verify_upi_payment(event, order_id):
             cap = (f"{PE_LIGHTNING} <b>NEW UPI DEPOSIT (Needs Approval)</b>\n"
                    f"{P_ACC} User: <code>{uid}</code>\n"
                    f"{P_MONEY} Amount: <b>₹{amt}</b>\n"
-                   f"🧾 UTR Submitted: <code>{utr_number}</code>\n"
+                   f"🧾 UTR Submitted: <code>{html.escape(utr_number)}</code>\n"
                    f"Please verify this UTR in your Payment app.")
             
             btns = [
@@ -808,52 +870,86 @@ async def verify_upi_payment(event, order_id):
             await conv.send_message("❌ Time out or Error. Try again.")
 
 # ================= BUYING FLOW =================
-async def show_countries(event, flow, page=1):
-    limit = 10
-    offset = (page - 1) * limit
-    
-    total_row = cur.execute("SELECT COUNT(DISTINCT country_name) FROM stock WHERE available=1").fetchone()
-    total = total_row[0] if total_row else 0
-    rows = cur.execute("SELECT country_icon, country_name, COUNT(*) FROM stock WHERE available=1 GROUP BY country_name ORDER BY country_name ASC LIMIT ? OFFSET ?", (limit, offset)).fetchall()
-        
-    if not rows and page == 1: 
-        err_msg = f"{P_NO} <b>Stock is Empty right now. Check back later!</b>"
-        if isinstance(event, events.CallbackQuery.Event): return await event.edit(err_msg)
-        else: return await event.respond(err_msg)
-    
-    title = f"{PE_LIGHTNING} <b>Bulk Sessions Menu</b>" if flow == 'bulk' else f"{PE_HEART} <b>Single Account Menu</b>"
-    msg = f"{title}\n\n{P_GLOBE} <b>Select a region below to view available numbers (Page {page}).</b>\n{P_USDT} Rate: 1 USDT = {P_INR}{get_usdt_rate()}\n\n"
-    
-    btns = []
-    for (i, n, c) in rows:
-        btns.append([Button.inline(f"{i} {n} ({c})", f"bc|{flow}|{n[:20]}")])
+CATEGORIES = [
+    ("spam_free", "🟢", "Spam Free"),
+    ("limit_spam", "🔴", "Limit / Spam"),
+    ("premium",   "🔵", "Premium"),
+]
+CATEGORY_MAP = {k: (icon, label) for k, icon, label in CATEGORIES}
 
-    nav = []
-    if page > 1: nav.append(Button.inline("Prev", f"pg_c|{flow}|{page-1}"))
-    if offset + limit < total: nav.append(Button.inline("Next", f"pg_c|{flow}|{page+1}"))
-    if nav: btns.append(nav)
+def cat_label(cat):
+    icon, label = CATEGORY_MAP.get(cat, ("⚪", cat or "Unknown"))
+    return f"{icon} {label}"
+
+def cat_icon(cat):
+    return CATEGORY_MAP.get(cat, ("⚪", cat or "Unknown"))[0]
+
+async def show_categories(event, flow):
+    rows = cur.execute("SELECT category, COUNT(*) FROM stock WHERE available=1 GROUP BY category").fetchall()
+    counts = {c: n for c, n in rows}
+    title = f"{PE_LIGHTNING} <b>Bulk Sessions Menu</b>" if flow == 'bulk' else f"{PE_HEART} <b>Single Account Menu</b>"
+    msg = f"{title}\n\n📦 <b>Choose Account Type:</b>\n\n{P_USDT} Rate: 1 USDT = {P_INR}{get_usdt_rate()}"
+
+    btns = []
+    for key, icon, label in CATEGORIES:
+        n = counts.get(key, 0)
+        btns.append([Button.inline(f"{icon} {label} ({n})", f"cat|{flow}|{key}")])
     btns.append([Button.inline("Cancel", "cancel_action")])
-    
+
+    if not counts:
+        msg += f"\n\n{P_NO} <b>Stock is Empty right now. Check back later!</b>"
+
     if isinstance(event, events.CallbackQuery.Event): await event.edit(msg, buttons=btns)
     else: await event.respond(msg, buttons=btns)
 
-async def show_years(event, flow, country):
-    rows = cur.execute("SELECT account_year, price, COUNT(*) FROM stock WHERE available=1 AND country_name LIKE ? GROUP BY account_year, price ORDER BY account_year DESC", (f"{country}%",)).fetchall()
+async def show_countries(event, flow, category, page=1):
+    limit = 10
+    offset = (page - 1) * limit
+
+    total_row = cur.execute("SELECT COUNT(DISTINCT country_name) FROM stock WHERE available=1 AND category=?", (category,)).fetchone()
+    total = total_row[0] if total_row else 0
+    rows = cur.execute("SELECT country_icon, country_name, COUNT(*) FROM stock WHERE available=1 AND category=? GROUP BY country_name ORDER BY country_name ASC LIMIT ? OFFSET ?", (category, limit, offset)).fetchall()
+
+    if not rows and page == 1:
+        err_msg = f"{P_NO} <b>{cat_label(category)}: Stock is Empty right now. Check back later!</b>"
+        btns = [[Button.inline("⬅️ Back", f"catmenu|{flow}")]]
+        if isinstance(event, events.CallbackQuery.Event): return await event.edit(err_msg, buttons=btns)
+        else: return await event.respond(err_msg, buttons=btns)
+
+    title = f"{PE_LIGHTNING} <b>Bulk Sessions Menu</b>" if flow == 'bulk' else f"{PE_HEART} <b>Single Account Menu</b>"
+    msg = f"{title}\n📦 Type: {cat_label(category)}\n\n{P_GLOBE} <b>Select a region below to view available numbers (Page {page}).</b>\n{P_USDT} Rate: 1 USDT = {P_INR}{get_usdt_rate()}\n\n"
+
+    btns = []
+    for (i, n, c) in rows:
+        btns.append([Button.inline(f"{i} {n} ({c})", f"bc|{flow}|{category}|{n[:20]}")])
+
+    nav = []
+    if page > 1: nav.append(Button.inline("Prev", f"pg_c|{flow}|{category}|{page-1}"))
+    if offset + limit < total: nav.append(Button.inline("Next", f"pg_c|{flow}|{category}|{page+1}"))
+    if nav: btns.append(nav)
+    btns.append([Button.inline("⬅️ Back", f"catmenu|{flow}")])
+    btns.append([Button.inline("Cancel", "cancel_action")])
+
+    if isinstance(event, events.CallbackQuery.Event): await event.edit(msg, buttons=btns)
+    else: await event.respond(msg, buttons=btns)
+
+async def show_years(event, flow, category, country):
+    rows = cur.execute("SELECT account_year, price, COUNT(*) FROM stock WHERE available=1 AND category=? AND country_name LIKE ? GROUP BY account_year, price ORDER BY account_year DESC", (category, f"{country}%",)).fetchall()
     if not rows: return await event.answer("❌ Out of stock for this country.", alert=True)
 
     uid = event.sender_id
     disc_row = cur.execute("SELECT discount FROM users WHERE user_id=?", (uid,)).fetchone()
     discount = disc_row[0] if disc_row else 0
 
-    msg = f"{PE_FLOWER} <b>Select Account Year</b>\n{P_GLOBE} Country: <b>{country}</b>\n\n"
+    msg = f"{PE_FLOWER} <b>Select Account Year</b>\n📦 Type: {cat_label(category)}\n{P_GLOBE} Country: <b>{country}</b>\n\n"
     btns = []
-    
+
     for (y, p, c) in rows:
         disp_p = p if discount == 0 else int(p * (100 - discount) / 100)
         disc_text = f" (-{discount}%)" if discount > 0 else ""
-        btns.append([Button.inline(f"{y} | ₹{disp_p}{disc_text} | {c}", f"by|{flow}|{country}|{y}|{p}")])
+        btns.append([Button.inline(f"{y} | ₹{disp_p}{disc_text} | {c}", f"by|{flow}|{category}|{country}|{y}|{p}")])
 
-    btns.append([Button.inline("Back to Countries", f"pg_c|{flow}|1")])
+    btns.append([Button.inline("Back to Countries", f"pg_c|{flow}|{category}|1")])
     await event.edit(msg, buttons=btns)
 
 def mask_phone(phone):
@@ -868,26 +964,27 @@ def user_final_price(uid, base):
     d = row[0] if row else 0
     return base if d == 0 else int(base * (100 - d) / 100)
 
-async def show_account_info(event, country, year, price_str):
+async def show_account_info(event, category, country, year, price_str):
     uid, base = event.sender_id, int(price_str)
-    row = cur.execute("SELECT country_icon, COUNT(*) FROM stock WHERE available=1 AND country_name LIKE ? AND account_year=? AND price=?", (f"{country}%", int(year), base)).fetchone()
+    row = cur.execute("SELECT country_icon, COUNT(*) FROM stock WHERE available=1 AND category=? AND country_name LIKE ? AND account_year=? AND price=?", (category, f"{country}%", int(year), base)).fetchone()
     if not row or not row[1]: return await event.answer("❌ Out of stock!", alert=True)
     icon, cnt = row
     final = user_final_price(uid, base)
     msg = (f"⚡ <b>Telegram Account Info</b>\n\n"
            f"🌍 <b>Country :</b> {icon} {country}\n"
+           f"📦 <b>Type :</b> {cat_label(category)}\n"
            f"💸 <b>Price :</b> {usd_inr(final)}\n"
            f"📦 <b>Available :</b> {cnt}\n"
            f"🔍 Reliable | Affordable | Good Quality\n\n"
            f"⚠️ <b>Important:</b> Please use Graph Manager / Plus Messenger.\n"
            f"🚫 We are not responsible for any freeze/ban")
-    btns = [[Button.inline("🛒 Buy Now", f"pc|{country}|{year}|{base}")],
-            [Button.inline("⬅️ Back", f"bc|single|{country}")]]
+    btns = [[Button.inline("🛒 Buy Now", f"pc|{category}|{country}|{year}|{base}")],
+            [Button.inline("⬅️ Back", f"bc|single|{category}|{country}")]]
     await event.edit(msg, buttons=btns)
 
-async def confirm_purchase(event, country, year, price_str):
+async def confirm_purchase(event, category, country, year, price_str):
     uid, base = event.sender_id, int(price_str)
-    acc = cur.execute("SELECT phone, country_icon, account_year, twofa FROM stock WHERE available=1 AND country_name LIKE ? AND account_year=? AND price=? ORDER BY phone LIMIT 1", (f"{country}%", int(year), base)).fetchone()
+    acc = cur.execute("SELECT phone, country_icon, account_year, twofa FROM stock WHERE available=1 AND category=? AND country_name LIKE ? AND account_year=? AND price=? ORDER BY phone LIMIT 1", (category, f"{country}%", int(year), base)).fetchone()
     if not acc: return await event.answer("❌ Sold out!", alert=True)
     phone, icon, yr, twofa = acc
 
@@ -902,7 +999,8 @@ async def confirm_purchase(event, country, year, price_str):
     msg = (f"━━━━━━━━━━━━━━━━━━━━\n"
            f"🛒 <b>PURCHASE CONFIRMATION</b>\n"
            f"━━━━━━━━━━━━━━━━━━━━\n\n"
-           f"🏷️ {icon} {country}\n\n"
+           f"🏷️ {icon} {country}\n"
+           f"📦 Type: {cat_label(category)}\n\n"
            f"<b>Account Details:</b>\n"
            f"📞 Phone: <code>{mask_phone(phone)}</code>\n"
            f"⏰ Age: {yr} ({age_y}Y)\n"
@@ -913,11 +1011,11 @@ async def confirm_purchase(event, country, year, price_str):
            f"{after_line}\n\n"
            f"✅ Please use Plus Messenger.\n"
            f"🚫 We are not responsible for any freeze/ban")
-    btns = [[Button.inline("✅ Confirm Purchase", f"buy_cf|{country}|{year}|{base}")],
+    btns = [[Button.inline("✅ Confirm Purchase", f"buy_cf|{category}|{country}|{year}|{base}")],
             [Button.inline("❌ Cancel", "cancel_action")]]
     await event.edit(msg, buttons=btns)
 
-async def process_purchase(event, country, year_str, price_str):
+async def process_purchase(event, category, country, year_str, price_str):
     uid, base_price = event.sender_id, int(price_str)
 
     disc_row = cur.execute("SELECT discount FROM users WHERE user_id=?", (uid,)).fetchone()
@@ -925,7 +1023,7 @@ async def process_purchase(event, country, year_str, price_str):
     final_price = base_price if discount == 0 else int(base_price * (100 - discount) / 100)
 
     async with get_user_lock(uid):
-        row = cur.execute("SELECT phone, session_file, country_icon, account_year, twofa FROM stock WHERE country_name LIKE ? AND account_year=? AND price=? AND available=1 ORDER BY phone LIMIT 1", (f"{country}%", int(year_str), base_price)).fetchone()
+        row = cur.execute("SELECT phone, session_file, country_icon, account_year, twofa FROM stock WHERE category=? AND country_name LIKE ? AND account_year=? AND price=? AND available=1 ORDER BY phone LIMIT 1", (category, f"{country}%", int(year_str), base_price)).fetchone()
 
         if not row:
             return await event.answer("❌ Sold out! Another user just bought this account.", alert=True)
@@ -987,13 +1085,8 @@ async def auto_otp_task(phone):
         if phone not in active_orders: return 
         try:
             msgs = await client.get_messages(777000, limit=5)
-            code = None
-            for m in msgs:
-                if m.date.timestamp() > start_time - 10: 
-                    if m.message and re.search(OTP_REGEX, m.message) and "Login detected" not in m.message:
-                        code = re.search(OTP_REGEX, m.message).group()
-                        break
-            
+            code = extract_login_code(msgs, start_time)
+
             if code:
                 if not order['paid']:
                     order['paid'] = True
@@ -1033,29 +1126,30 @@ async def auto_otp_task(phone):
         try: await bot.edit_message(uid, msg_id, f"{P_TIME} <b>Order Expired!</b>\nThe 10-minute limit for <code>{phone}</code> ran out. Your money ({P_INR}{order['price']}) has been automatically refunded.")
         except: pass
 
-async def init_session_purchase(event, country, year, price_str):
+async def init_session_purchase(event, category, country, year, price_str):
     uid, price = event.sender_id, int(price_str)
-    stock_row = cur.execute("SELECT COUNT(*) FROM stock WHERE country_name LIKE ? AND account_year=? AND price=? AND available=1", (f"{country}%", int(year), price)).fetchone()
+    stock_row = cur.execute("SELECT COUNT(*) FROM stock WHERE category=? AND country_name LIKE ? AND account_year=? AND price=? AND available=1", (category, f"{country}%", int(year), price)).fetchone()
     stock = stock_row[0] if stock_row else 0
     if stock == 0: return await event.answer("❌ Out of stock!", alert=True)
     
-    session_buy_state[uid] = {'country': country, 'year': year, 'price': price, 'stock': stock}
+    session_buy_state[uid] = {'category': category, 'country': country, 'year': year, 'price': price, 'stock': stock}
     disc_row = cur.execute("SELECT discount FROM users WHERE user_id=?", (uid,)).fetchone()
     discount = disc_row[0] if disc_row else 0
     p_disp = price if discount == 0 else int(price * (100 - discount) / 100)
     
-    msg = (f"{PE_GIFT} <b>Buy {country} ({year}) Sessions</b>\n\n"
+    msg = (f"{PE_GIFT} <b>Buy {country} ({year}) Sessions</b>\n"
+           f"📦 Type: {cat_label(category)}\n\n"
            f"{P_MONEY} <b>Price per session:</b> {P_INR}{p_disp}\n"
            f"{P_PKG} <b>Available Stock:</b> {stock}\n\n"
            f"👇 <b>Reply to this message</b> with the <b>Number of Sessions</b> you want to buy.")
     await event.edit(msg, buttons=[[Button.inline("Cancel", "cancel_action")]])
 
 async def process_bulk_sessions(event, uid, qty, state, final_cost):
-    country, year, price = state['country'], int(state['year']), int(state['price'])
+    category, country, year, price = state['category'], state['country'], int(state['year']), int(state['price'])
     await event.respond(f"{PE_LIGHTNING} <b>Processing your sessions...</b>")
 
     async with get_user_lock(uid):
-        rows = cur.execute("SELECT phone, session_file, twofa, account_year FROM stock WHERE country_name LIKE ? AND account_year=? AND price=? AND available=1 LIMIT ?", (f"{country}%", year, price, qty)).fetchall()
+        rows = cur.execute("SELECT phone, session_file, twofa, account_year FROM stock WHERE category=? AND country_name LIKE ? AND account_year=? AND price=? AND available=1 LIMIT ?", (category, f"{country}%", year, price, qty)).fetchall()
         if len(rows) < qty:
             return await event.respond(f"{P_NO} Stock changed during processing. Purchase Cancelled.")
         
@@ -1092,6 +1186,7 @@ async def process_bulk_sessions(event, uid, qty, state, final_cost):
         caption = (
     f"{PE_GIFT} <b>Bulk Purchase Successful!</b>\n\n"
     f"{P_FLAG} Country: {country}\n"
+    f"📦 Type: {cat_label(category)}\n"
     f"{P_PKG} Quantity: {qty}\n"
     f"{P_CARD} Total Paid: {P_INR}{final_cost}\n"
     f"{P_2FA} 2FA: 2007\n\n"
@@ -1197,7 +1292,7 @@ async def admin_panel_handler(event):
         
     r1 = []
     if uid == ADMIN_ID or has_perm(uid, 'p_add_stock'):
-        r1.extend([Button.inline("Add Single Acc", "adm_addstock"), Button.inline("Add ZIP", "adm_addzip")])
+        r1.append(Button.inline("📦 Add Stock (Category)", "adm_catmenu"))
     if r1: btns.append(r1)
 
     r2 = []
@@ -1258,44 +1353,74 @@ async def edit_admin_menu(event, target_id):
     ]
     await event.edit(f"✏️ <b>Editing Admin:</b> <code>{target_id}</code>", buttons=btns)
 
-async def send_manage_stock_page(event, page):
+async def send_managestock_catmenu(event):
+    btns = [[Button.inline(f"{icon} {label}", f"adm_mscat|{key}")] for key, icon, label in CATEGORIES]
+    btns.append([Button.inline("Back", "adm_adminmain")])
+    await event.edit(f"{PE_LOCATION} <b>Manage Stock</b>\nSelect a category:", buttons=btns)
+
+async def send_manage_stock_page(event, category, page):
     limit = 10
     offset = (page - 1) * limit
-    rows = cur.execute("SELECT DISTINCT country_name FROM stock ORDER BY country_name").fetchall()
+    rows = cur.execute("SELECT DISTINCT country_name FROM stock WHERE category=? ORDER BY country_name", (category,)).fetchall()
     total = len(rows)
     countries = rows[offset:offset+limit]
     
     btns = []
     for (c,) in countries: 
         flag = get_flag_by_country_name(c)
-        btns.append([Button.inline(f"{flag} {c}", f"adm_msc|{c}")])
+        btns.append([Button.inline(f"{flag} {c}", f"adm_msc|{category}|{c}")])
     
     nav = []
-    if page > 1: nav.append(Button.inline("Prev", f"adm_mspg|{page-1}"))
-    if offset + limit < total: nav.append(Button.inline("Next", f"adm_mspg|{page+1}"))
+    if page > 1: nav.append(Button.inline("Prev", f"adm_mspg|{category}|{page-1}"))
+    if offset + limit < total: nav.append(Button.inline("Next", f"adm_mspg|{category}|{page+1}"))
     if nav: btns.append(nav)
-    btns.append([Button.inline("Back", "adm_adminmain")])
-    await event.edit(f"{PE_LOCATION} <b>Manage Stock</b> (Page {page})\nSelect a country to edit its properties:", buttons=btns)
+    btns.append([Button.inline("Back", "adm_managestock")])
+    if not countries:
+        return await event.edit(f"{PE_LOCATION} <b>Manage Stock</b>\n📦 {cat_label(category)}\n\n{P_NO} Is category me koi stock nahi hai.", buttons=btns)
+    await event.edit(f"{PE_LOCATION} <b>Manage Stock</b> (Page {page})\n📦 {cat_label(category)}\nSelect a country to edit its properties:", buttons=btns)
 
-async def send_manage_stock_country(event, c_name):
-    years = cur.execute("SELECT DISTINCT account_year FROM stock WHERE country_name=? ORDER BY account_year DESC", (c_name,)).fetchall()
+async def send_manage_stock_country(event, category, c_name):
+    years = cur.execute("SELECT DISTINCT account_year FROM stock WHERE category=? AND country_name=? ORDER BY account_year DESC", (category, c_name)).fetchall()
     flag = get_flag_by_country_name(c_name)
     btns = [
-        [Button.inline("Edit Country Name", f"adm_msedit|name|{c_name}"), Button.inline("Edit Flag", f"adm_msedit|flag|{c_name}")],
-        [Button.inline("Edit Common Price (All Years)", f"adm_msedit|cprice|{c_name}")]
+        [Button.inline("Edit Country Name", f"adm_msedit|name|{category}|{c_name}"), Button.inline("Edit Flag", f"adm_msedit|flag|{category}|{c_name}")],
+        [Button.inline("Edit Common Price (All Years)", f"adm_msedit|cprice|{category}|{c_name}")],
+        [Button.inline("🔀 Move to Another Category", f"adm_mvmenu|{category}|{c_name}")]
     ]
     y_btns = []
-    for (y,) in years: y_btns.append(Button.inline(f"{y}", f"adm_msedit|yprice|{c_name}|{y}"))
+    for (y,) in years: y_btns.append(Button.inline(f"{y}", f"adm_msedit|yprice|{category}|{c_name}|{y}"))
     
     for i in range(0, len(y_btns), 3): btns.append(y_btns[i:i+3])
-    btns.append([Button.inline("Back", "adm_mspg|1")])
-    await event.edit(f"{flag} <b>Managing: {c_name}</b>\nSelect an option to edit:", buttons=btns)
+    btns.append([Button.inline("Back", f"adm_mspg|{category}|1")])
+    await event.edit(f"{flag} <b>Managing: {c_name}</b>\n📦 {cat_label(category)}\nSelect an option to edit:", buttons=btns)
 
-async def send_autoprice_page(event, page):
+# [NEW] Stock ko ek category se dusri category me move karna
+async def send_move_menu(event, category, c_name):
+    flag = get_flag_by_country_name(c_name)
+    btns = [[Button.inline(f"{icon} {label}", f"adm_mvdo|{category}|{c_name}|{key}")]
+            for key, icon, label in CATEGORIES if key != category]
+    btns.append([Button.inline("Back", f"adm_msc|{category}|{c_name}")])
+    await event.edit(f"{flag} <b>Move {c_name}</b>\nFrom: {cat_label(category)}\n\nSelect destination category:", buttons=btns)
+
+async def do_move_category(event, category, c_name, new_cat):
+    if new_cat not in CATEGORY_MAP or new_cat == category:
+        return await event.answer("❌ Invalid category.", alert=True)
+    cur.execute("UPDATE stock SET category=? WHERE country_name=? AND category=?", (new_cat, c_name, category))
+    moved = cur.rowcount
+    db.commit()
+    await event.answer(f"✅ {moved} account(s) moved to {CATEGORY_MAP[new_cat][1]}", alert=True)
+    await send_manage_stock_page(event, category, 1)
+
+async def send_autoprice_catmenu(event):
+    btns = [[Button.inline(f"{icon} {label}", f"adm_apcat|{key}")] for key, icon, label in CATEGORIES]
+    btns.append([Button.inline("Back", "adm_adminmain")])
+    await event.edit(f"{PE_LIGHTNING} <b>Auto Price Setup</b>\nSelect a category:", buttons=btns)
+
+async def send_autoprice_page(event, category, page):
     limit = 10
     offset = (page - 1) * limit
     c_list = set([c[0] for c in COUNTRY_CODES.values()])
-    db_countries = cur.execute("SELECT DISTINCT country_name FROM stock").fetchall()
+    db_countries = cur.execute("SELECT DISTINCT country_name FROM stock WHERE category=?", (category,)).fetchall()
     for (c,) in db_countries: c_list.add(c)
     
     custom_countries = cur.execute("SELECT DISTINCT name FROM custom_countries").fetchall()
@@ -1308,24 +1433,23 @@ async def send_autoprice_page(event, page):
     btns = []
     for c in countries: 
         flag = get_flag_by_country_name(c)
-        btns.append([Button.inline(f"{flag} {c}", f"adm_apc|{c}")])
+        btns.append([Button.inline(f"{flag} {c}", f"adm_apc|{category}|{c}")])
         
     nav = []
-    if page > 1: nav.append(Button.inline("Prev", f"adm_appg|{page-1}"))
-    if offset + limit < total: nav.append(Button.inline("Next", f"adm_appg|{page+1}"))
+    if page > 1: nav.append(Button.inline("Prev", f"adm_appg|{category}|{page-1}"))
+    if offset + limit < total: nav.append(Button.inline("Next", f"adm_appg|{category}|{page+1}"))
     if nav: btns.append(nav)
-    btns.append([Button.inline("Add Custom Country", "adm_ap_add_country")])
-    btns.append([Button.inline("Back", "adm_adminmain")])
-    await event.edit(f"{PE_LIGHTNING} <b>Auto Price Setup</b> (Page {page})\nSelect a country to set fixed prices:", buttons=btns)
+    btns.append([Button.inline("Add Custom Country", f"adm_ap_add_country|{category}")])
+    btns.append([Button.inline("Back", "adm_autoprice")])
+    await event.edit(f"{PE_LIGHTNING} <b>Auto Price Setup</b> (Page {page})\n📦 {cat_label(category)}\nSelect a country to set fixed prices:", buttons=btns)
 
-async def send_autoprice_country(event, c_name):
+async def send_autoprice_country(event, category, c_name):
     flag = get_flag_by_country_name(c_name)
-    btns = [[Button.inline("Set Common Price", f"adm_apset|{c_name}|Common")]]
-    y_btns = []
-    for y in range(2024, 1999, -1): y_btns.append(Button.inline(f"{y}", f"adm_apset|{c_name}|{y}"))
+    btns = [[Button.inline("Set Common Price", f"adm_apset|{category}|{c_name}|Common")]]
+    y_btns = [Button.inline(f"{y}", f"adm_apset|{category}|{c_name}|{y}") for y in range(2024, 1999, -1)]
     for i in range(0, len(y_btns), 4): btns.append(y_btns[i:i+4])
-    btns.append([Button.inline("Back", "adm_appg|1")])
-    await event.edit(f"{flag} <b>Auto Price: {c_name}</b>\nSelect 'Common' for default price, or specific years:", buttons=btns)
+    btns.append([Button.inline("Back", f"adm_appg|{category}|1")])
+    await event.edit(f"{flag} <b>Auto Price: {c_name}</b>\n📦 {cat_label(category)}\nSelect 'Common' for default price, or specific years:", buttons=btns)
 
 async def admin_actions(event):
     data_full = event.data.decode()
@@ -1338,6 +1462,18 @@ async def admin_actions(event):
         await event.delete()
         class FakeEvent: chat_id = chat; sender_id = uid
         return await admin_panel_handler(FakeEvent())
+
+    # [NEW] Add Stock: pehle category chuno
+    if action_data == "catmenu" and has_perm(uid, 'p_add_stock'):
+        btns = [[Button.inline(f"{icon} {label}", f"adm_catpick|{key}")] for key, icon, label in CATEGORIES]
+        btns.append([Button.inline("Back", "adm_adminmain")])
+        return await event.edit(f"📦 <b>Select category to add stock into:</b>", buttons=btns)
+
+    if action_data.startswith("catpick|") and has_perm(uid, 'p_add_stock'):
+        cat = action_data.split("|")[1]
+        btns = [[Button.inline("Add Single Acc", f"adm_addstock|{cat}"), Button.inline("Add ZIP", f"adm_addzip|{cat}")],
+                [Button.inline("Back", "adm_catmenu")]]
+        return await event.edit(f"📦 <b>Category:</b> {cat_label(cat)}\n\nChoose how to add stock:", buttons=btns)
 
     if action_data == "togglebot" and has_perm(uid, 'p_settings'):
         new_status = 'off' if is_bot_online() else 'on'
@@ -1391,6 +1527,8 @@ async def admin_actions(event):
 
     elif action_data.startswith("tglperm|") and uid == ADMIN_ID:
         _, t_id, p_name = action_data.split("|")
+        if p_name not in ('p_add_stock', 'p_manage_stock', 'p_stats', 'p_bal', 'p_settings'):
+            return await event.answer("Invalid permission", alert=True)
         cur.execute(f"UPDATE admins SET {p_name} = CASE WHEN {p_name}=1 THEN 0 ELSE 1 END WHERE user_id=?", (t_id,))
         db.commit()
         return await edit_admin_menu(event, t_id)
@@ -1402,12 +1540,26 @@ async def admin_actions(event):
         await event.answer("✅ Admin Removed", alert=True)
         return await manage_admins_menu(event)
 
-    elif action_data == "managestock" and has_perm(uid, 'p_manage_stock'): return await send_manage_stock_page(event, 1)
-    elif action_data.startswith("mspg|") and has_perm(uid, 'p_manage_stock'): return await send_manage_stock_page(event, int(action_data.split("|")[1]))
-    elif action_data.startswith("msc|") and has_perm(uid, 'p_manage_stock'): return await send_manage_stock_country(event, action_data.split("|")[1])
-    elif action_data == "autoprice" and has_perm(uid, 'p_manage_stock'): return await send_autoprice_page(event, 1)
-    elif action_data.startswith("appg|") and has_perm(uid, 'p_manage_stock'): return await send_autoprice_page(event, int(action_data.split("|")[1]))
-    elif action_data.startswith("apc|") and has_perm(uid, 'p_manage_stock'): return await send_autoprice_country(event, action_data.split("|")[1])
+    # ---- [CHANGED] Manage Stock: category-wise ----
+    elif action_data == "managestock" and has_perm(uid, 'p_manage_stock'): return await send_managestock_catmenu(event)
+    elif action_data.startswith("mscat|") and has_perm(uid, 'p_manage_stock'): return await send_manage_stock_page(event, action_data.split("|")[1], 1)
+    elif action_data.startswith("mspg|") and has_perm(uid, 'p_manage_stock'):
+        _, cat, pg = action_data.split("|"); return await send_manage_stock_page(event, cat, int(pg))
+    elif action_data.startswith("msc|") and has_perm(uid, 'p_manage_stock'):
+        _, cat, cn = action_data.split("|", 2); return await send_manage_stock_country(event, cat, cn)
+    # [NEW] Move category
+    elif action_data.startswith("mvmenu|") and has_perm(uid, 'p_manage_stock'):
+        _, cat, cn = action_data.split("|", 2); return await send_move_menu(event, cat, cn)
+    elif action_data.startswith("mvdo|") and has_perm(uid, 'p_manage_stock'):
+        _, cat, cn, new_cat = action_data.split("|", 3); return await do_move_category(event, cat, cn, new_cat)
+
+    # ---- [CHANGED] Auto Price: category-wise ----
+    elif action_data == "autoprice" and has_perm(uid, 'p_manage_stock'): return await send_autoprice_catmenu(event)
+    elif action_data.startswith("apcat|") and has_perm(uid, 'p_manage_stock'): return await send_autoprice_page(event, action_data.split("|")[1], 1)
+    elif action_data.startswith("appg|") and has_perm(uid, 'p_manage_stock'):
+        _, cat, pg = action_data.split("|"); return await send_autoprice_page(event, cat, int(pg))
+    elif action_data.startswith("apc|") and has_perm(uid, 'p_manage_stock'):
+        _, cat, cn = action_data.split("|", 2); return await send_autoprice_country(event, cat, cn)
         
     elif action_data == "backupusr" and has_perm(uid, 'p_settings'):
         cur.execute("SELECT * FROM users")
@@ -1425,7 +1577,7 @@ async def admin_actions(event):
             return resp
 
         try:
-            if action_data == "ap_add_country" and has_perm(uid, 'p_manage_stock'):
+            if action_data.startswith("ap_add_country") and has_perm(uid, 'p_manage_stock'):
                 code = (await get_reply(f"{P_PHONE} <b>Enter Country Calling Code (without +):</b>\n<i>Example: 91</i>")).raw_text.replace("+", "").strip()
                 flag = html.escape((await get_reply(f"{P_FLAG} <b>Enter Country Flag Emoji:</b>\n<i>Example: 🇮🇳</i>")).raw_text.strip())
                 name = html.escape((await get_reply(f"{P_GLOBE} <b>Enter Country Name:</b>\n<i>Example: India</i>")).raw_text.strip())
@@ -1475,46 +1627,48 @@ async def admin_actions(event):
                     async def answer(self, txt, alert): pass
                 await edit_admin_menu(FakeEvent(), t_id)
 
+            # [CHANGED] msedit: parts = msedit|action|category|country|year
             elif action_data.startswith("msedit|") and has_perm(uid, 'p_manage_stock'):
                 parts = action_data.split("|")
-                action, c_name = parts[1], parts[2]
-                
+                action, cat, c_name = parts[1], parts[2], parts[3]
+
                 if action == "name":
                     new_name = html.escape((await get_reply(f"{P_DOC} <b>Enter NEW Name for {c_name}:</b>")).raw_text)
-                    cur.execute("UPDATE stock SET country_name=? WHERE country_name=?", (new_name, c_name))
-                    cur.execute("UPDATE auto_prices SET country=? WHERE country=?", (new_name, c_name))
+                    cur.execute("UPDATE stock SET country_name=? WHERE country_name=? AND category=?", (new_name, c_name, cat))
+                    cur.execute("UPDATE auto_prices SET country=? WHERE country=? AND category=?", (new_name, c_name, cat))
                     db.commit()
-                    await conv.send_message(f"{P_YES} Country '{c_name}' successfully renamed to '{new_name}'!")
-                    
+                    await conv.send_message(f"{P_YES} {cat_label(cat)}: '{c_name}' renamed to '{new_name}'!")
+
                 elif action == "flag":
                     new_flag = html.escape((await get_reply(f"{P_FLAG} <b>Enter NEW Flag Emoji for {c_name}:</b>")).raw_text)
-                    cur.execute("UPDATE stock SET country_icon=? WHERE country_name=?", (new_flag, c_name))
+                    cur.execute("UPDATE stock SET country_icon=? WHERE country_name=? AND category=?", (new_flag, c_name, cat))
                     db.commit()
-                    await conv.send_message(f"{P_YES} Flag updated to {new_flag} for '{c_name}'!")
-                    
+                    await conv.send_message(f"{P_YES} Flag updated to {new_flag} for '{c_name}' ({cat_label(cat)})!")
+
                 elif action == "cprice":
-                    new_p = int((await get_reply(f"{P_MONEY} <b>Enter NEW Common Price for all {c_name} accounts:</b>")).raw_text)
-                    cur.execute("UPDATE stock SET price=? WHERE country_name=?", (new_p, c_name))
+                    new_p = int((await get_reply(f"{P_MONEY} <b>Enter NEW Common Price for all {c_name} accounts ({cat_label(cat)}):</b>")).raw_text)
+                    cur.execute("UPDATE stock SET price=? WHERE country_name=? AND category=?", (new_p, c_name, cat))
                     db.commit()
-                    await conv.send_message(f"{P_YES} All existing '{c_name}' accounts updated to {P_INR}{new_p}!")
-                    
+                    await conv.send_message(f"{P_YES} {cat_label(cat)}: all '{c_name}' accounts now {P_INR}{new_p}!")
+
                 elif action == "yprice":
-                    year = parts[3]
-                    new_p = int((await get_reply(f"{P_MONEY} <b>Enter NEW Price for {c_name} ({year}):</b>")).raw_text)
-                    cur.execute("UPDATE stock SET price=? WHERE country_name=? AND account_year=?", (new_p, c_name, year))
+                    year = parts[4]
+                    new_p = int((await get_reply(f"{P_MONEY} <b>Enter NEW Price for {c_name} ({year}) - {cat_label(cat)}:</b>")).raw_text)
+                    cur.execute("UPDATE stock SET price=? WHERE country_name=? AND account_year=? AND category=?", (new_p, c_name, year, cat))
                     db.commit()
-                    await conv.send_message(f"{P_YES} All existing '{c_name}' ({year}) accounts updated to {P_INR}{new_p}!")
+                    await conv.send_message(f"{P_YES} {cat_label(cat)}: '{c_name}' ({year}) now {P_INR}{new_p}!")
                     
+            # [CHANGED] apset: parts = apset|category|country|year
             elif action_data.startswith("apset|") and has_perm(uid, 'p_manage_stock'):
                 parts = action_data.split("|")
-                c_name, year = parts[1], parts[2]
-                new_p = int((await get_reply(f"{P_ASST} <b>Enter Auto-Price for {c_name} ({year}):</b>\n<i>(Enter 0 to remove this auto-price)</i>")).raw_text)
+                cat, c_name, year = parts[1], parts[2], parts[3]
+                new_p = int((await get_reply(f"{P_ASST} <b>Auto-Price for {c_name} ({year}) - {cat_label(cat)}:</b>\n<i>(Enter 0 to remove)</i>")).raw_text)
                 if new_p == 0:
-                    cur.execute("DELETE FROM auto_prices WHERE country=? AND year=?", (c_name, year))
-                    await conv.send_message(f"{P_YES} Auto-Price for {c_name} ({year}) removed!")
+                    cur.execute("DELETE FROM auto_prices WHERE category=? AND country=? AND year=?", (cat, c_name, year))
+                    await conv.send_message(f"{P_YES} Auto-Price removed for {c_name} ({year}) in {cat_label(cat)}!")
                 else:
-                    cur.execute("INSERT OR REPLACE INTO auto_prices (country, year, price) VALUES (?,?,?)", (c_name, year, new_p))
-                    await conv.send_message(f"{P_YES} Auto-Price for {c_name} ({year}) set to {P_INR}{new_p}! Incoming accounts will use this price automatically.")
+                    cur.execute("INSERT OR REPLACE INTO auto_prices (category, country, year, price) VALUES (?,?,?,?)", (cat, c_name, year, new_p))
+                    await conv.send_message(f"{P_YES} {cat_label(cat)}: {c_name} ({year}) = {P_INR}{new_p}. Incoming accounts use this automatically.")
                 db.commit()
 
             elif action_data == "addpay" and has_perm(uid, 'p_settings'):
@@ -1546,8 +1700,10 @@ async def admin_actions(event):
                     await conv.send_message(f"{P_YES} Deleted!")
                 except: await conv.send_message(f"{P_NO} Invalid ID.")
 
-            elif action_data == "addzip" and has_perm(uid, 'p_add_stock'):
-                resp = await get_reply(f"{P_PKG} <b>Send the ZIP file containing <code>.session</code> files:</b>")
+            elif action_data.startswith("addzip") and has_perm(uid, 'p_add_stock'):
+                zip_parts = action_data.split("|")
+                add_category = zip_parts[1] if len(zip_parts) > 1 else "spam_free"
+                resp = await get_reply(f"{P_PKG} <b>Category:</b> {cat_label(add_category)}\n<b>Send the ZIP file containing <code>.session</code> files:</b>")
                 if not resp.file or not resp.file.name.endswith('.zip'): return await conv.send_message(f"{P_NO} Invalid file.")
                 
                 await conv.send_message(f"{P_WAIT} <b>Extracting & Scanning Accounts...</b>")
@@ -1600,19 +1756,16 @@ async def admin_actions(event):
                         raw_pwd = (await get_reply(f"{P_2FA} <b>Enter 2FA Password for {len(accs)}x {c_name} accounts:</b>")).raw_text.strip()
                         twofa_pass = html.escape(raw_pwd)
 
-                    auto_row = cur.execute("SELECT price FROM auto_prices WHERE country=? AND year=?", (c_name, str(year))).fetchone()
-                    if not auto_row: auto_row = cur.execute("SELECT price FROM auto_prices WHERE country=? AND year='Common'", (c_name,)).fetchone()
-
-                    if auto_row:
-                        price = auto_row[0]
-                        await conv.send_message(f"⚡ <b>Auto-Price Applied:</b> {len(accs)}x {c_name} ({year}) at {P_INR}{price}.")
+                    # [CHANGED] category-wise price lookup
+                    price = lookup_auto_price(add_category, c_name, year)
+                    if price is not None:
+                        await conv.send_message(f"⚡ <b>Auto-Price Applied:</b> {len(accs)}x {c_name} ({year}) at {P_INR}{price} [{cat_label(add_category)}].")
                     else:
-                        existing_price = cur.execute("SELECT price FROM stock WHERE country_name=? LIMIT 1", (c_name,)).fetchone()
-                        if existing_price:
-                            price = existing_price[0]
-                            await conv.send_message(f"⚡ <b>Auto-Added:</b> {len(accs)}x {c_name} at {P_INR}{price} (Copied from DB).")
+                        price = lookup_existing_price(add_category, c_name)
+                        if price is not None:
+                            await conv.send_message(f"⚡ <b>Auto-Added:</b> {len(accs)}x {c_name} at {P_INR}{price} (Copied from {cat_label(add_category)} stock).")
                         else:
-                            price = int((await get_reply(f"📌 Found {len(accs)}x {c_name} ({year}).\n{P_MONEY} Enter Price (₹):")).raw_text)
+                            price = int((await get_reply(f"📌 Found {len(accs)}x {c_name} ({year}) [{cat_label(add_category)}].\n{P_MONEY} Enter Price (₹):")).raw_text)
 
                     for acc in accs:
                         acc_twofa = twofa_pass
@@ -1629,15 +1782,17 @@ async def admin_actions(event):
                         for ext in ['.session', '.session-wal', '.session-shm', '.session-journal']:
                             if os.path.exists(acc['path'] + ext): shutil.move(acc['path'] + ext, perm_base + ext)
                         cur.execute("INSERT OR REPLACE INTO stock (phone, session_file, country_name, country_icon, account_year, category, price, available, twofa) VALUES (?,?,?,?,?,?,?,?,?)", 
-                                    (acc['phone'], perm_base + ".session", c_name, c_icon, year, 'Good', price, 1, acc_twofa))
+                                    (acc['phone'], perm_base + ".session", c_name, c_icon, year, add_category, price, 1, acc_twofa))
                         success += 1
                 db.commit()
                 os.remove(zip_path); shutil.rmtree(extracted_dir)
                 fail_txt = ("\n" + P_WARN + " <b>2FA 2007 nahi ho paya:</b>\n" + html.escape("\n".join(failed_2fa))) if failed_2fa else ""
-                await conv.send_message(f"{P_YES} <b>Bulk Interactive Upload Complete!</b>\n{P_ON} Added: {success}\n{P_2FA} 2FA: {NEW_2FA}{fail_txt}")
+                await conv.send_message(f"{P_YES} <b>Bulk Interactive Upload Complete!</b>\n{P_ON} Added: {success}\n📦 Category: {cat_label(add_category)}\n{P_2FA} 2FA: {NEW_2FA}{fail_txt}")
 
-            elif action_data == "addstock" and has_perm(uid, 'p_add_stock'):
-                phone = (await get_reply(f"{P_PHONE} Enter Phone (+919999...):")).raw_text.replace(" ", "").replace("+", "")
+            elif action_data.startswith("addstock") and has_perm(uid, 'p_add_stock'):
+                stock_parts = action_data.split("|")
+                add_category = stock_parts[1] if len(stock_parts) > 1 else "spam_free"
+                phone = (await get_reply(f"{P_PHONE} <b>Category:</b> {cat_label(add_category)}\nEnter Phone (+919999...):")).raw_text.replace(" ", "").replace("+", "")
                 sp = f"sessions/{phone}"
                 delete_session_files(sp)  # purana locked/adhura session hata do taaki naya connect atke na
                 client = TelegramClient(sp, API_ID, API_HASH)
@@ -1693,28 +1848,27 @@ async def admin_actions(event):
 
                 if year is None:
                     return
-                auto_row = cur.execute("SELECT price FROM auto_prices WHERE country=? AND year=?", (c_name, str(year))).fetchone()
-                if not auto_row: auto_row = cur.execute("SELECT price FROM auto_prices WHERE country=? AND year='Common'", (c_name,)).fetchone()
 
-                if auto_row:
-                    price = auto_row[0]
-                    await conv.send_message(f"⚡ <b>Auto-Price Applied:</b> {P_INR}{price} for {c_name} ({year})")
+                # [CHANGED] category-wise price lookup
+                price = lookup_auto_price(add_category, c_name, year)
+                if price is not None:
+                    await conv.send_message(f"⚡ <b>Auto-Price Applied:</b> {P_INR}{price} for {c_name} ({year}) [{cat_label(add_category)}]")
                 else:
-                    existing_price = cur.execute("SELECT price FROM stock WHERE country_name=? LIMIT 1", (c_name,)).fetchone()
-                    if existing_price:
-                        price = existing_price[0]
-                        await conv.send_message(f"⚡ <b>Auto-detected Price:</b> {P_INR}{price} for {c_name}")
-                    else: price = int((await get_reply(f"{P_MONEY} Price (₹):")).raw_text)
+                    price = lookup_existing_price(add_category, c_name)
+                    if price is not None:
+                        await conv.send_message(f"⚡ <b>Auto-detected Price:</b> {P_INR}{price} for {c_name} [{cat_label(add_category)}]")
+                    else:
+                        price = int((await get_reply(f"{P_MONEY} Price (₹) for {c_name} [{cat_label(add_category)}]:")).raw_text)
                 
                 cur.execute("INSERT OR REPLACE INTO stock (phone, session_file, country_name, country_icon, account_year, category, price, available, twofa) VALUES (?,?,?,?,?,?,?,?,?)", 
-                            (phone, sp + ".session", c_name, c_icon, year, 'Good', price, 1, twofa_pass))
+                            (phone, sp + ".session", c_name, c_icon, year, add_category, price, 1, twofa_pass))
                 db.commit()
-                await conv.send_message(f"{P_YES} Added!")
+                await conv.send_message(f"{P_YES} Added! {P_GIFT} Category: {cat_label(add_category)}")
 
             elif action_data == "supporturl" and has_perm(uid, 'p_settings'):
                 url = (await get_reply("🔗 Enter new Support URL (must start with http:// or https://):")).raw_text
                 if not url.startswith("http"): url = "https://" + url.replace("@", "t.me/")
-                cur.execute("UPDATE settings SET value=? WHERE key='support_url'", (url,))
+                cur.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('support_url',?)", (url,))
                 db.commit()
                 await conv.send_message(f"{P_YES} Support URL updated.")
 
@@ -1756,7 +1910,7 @@ async def admin_actions(event):
 
             elif action_data == "usdtrate" and has_perm(uid, 'p_settings'):
                 r = float((await get_reply(f"{P_USDT} <b>New USDT Rate (INR):</b>")).raw_text)
-                cur.execute("UPDATE settings SET value=? WHERE key='usdt_rate'", (str(r),))
+                cur.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('usdt_rate',?)", (str(r),))
                 db.commit()
                 await conv.send_message(f"{P_YES} Rate set to {r}.")
 
@@ -1991,8 +2145,8 @@ async def handle_all_messages(e):
             except ValueError: await e.respond(f"{P_NO} Please enter a valid number in {P_INR} (INR).")
             return
 
-        if "Buy Account" in text: await show_countries(e, 'single', 1)
-        elif "Buy Sessions" in text: await show_countries(e, 'bulk', 1)
+        if "Buy Account" in text: await show_categories(e, 'single')
+        elif "Buy Sessions" in text: await show_categories(e, 'bulk')
         elif "Deposit" in text: await deposit_menu(e)
         elif "My Profile" in text: await profile_handler(e)
         elif "My Stats" in text: await stats_handler(e)
@@ -2048,26 +2202,34 @@ async def handle_callback_query(e):
             try: await e.edit(f"{P_NO} <b>Cancelled.</b>")
             except MessageNotModifiedError: pass
 
+        elif data.startswith("catmenu|"):
+            p = data.split("|")
+            await show_categories(e, p[1])
+
+        elif data.startswith("cat|"):
+            p = data.split("|")
+            await show_countries(e, p[1], p[2], 1)
+
         elif data.startswith("pg_c|"): 
             p = data.split("|")
-            await show_countries(e, p[1], int(p[2]))
+            await show_countries(e, p[1], p[2], int(p[3]))
 
         elif data.startswith("bc|"):
             p = data.split("|")
-            await show_years(e, p[1], p[2])
+            await show_years(e, p[1], p[2], p[3])
 
         elif data.startswith("by|"):
             p = data.split("|")
-            if p[1] == 'single': await show_account_info(e, p[2], p[3], p[4])
-            else: await init_session_purchase(e, p[2], p[3], p[4])
+            if p[1] == 'single': await show_account_info(e, p[2], p[3], p[4], p[5])
+            else: await init_session_purchase(e, p[2], p[3], p[4], p[5])
 
         elif data.startswith("pc|"):
             p = data.split("|")
-            await confirm_purchase(e, p[1], p[2], p[3])
+            await confirm_purchase(e, p[1], p[2], p[3], p[4])
             
         elif data.startswith("buy_cf|"):
             p = data.split("|")
-            await process_purchase(e, p[1], p[2], p[3])
+            await process_purchase(e, p[1], p[2], p[3], p[4])
 
         elif data.startswith("get_otp_again|"):
             phone = data.split("|")[1]
@@ -2081,13 +2243,8 @@ async def handle_callback_query(e):
             await e.answer("🔄 Fetching latest OTP...", alert=False)
             try:
                 msgs = await client.get_messages(777000, limit=5)
-                latest_code = None
-                for m in msgs:
-                    if m.date.timestamp() > start_time - 10:
-                        if m.message and re.search(OTP_REGEX, m.message) and "Login detected" not in m.message:
-                            latest_code = re.search(OTP_REGEX, m.message).group()
-                            break
-                
+                latest_code = extract_login_code(msgs, start_time)
+
                 if latest_code:
                     twofa_text = f"{P_2FA} <b>2FA:</b> <code>{order['twofa']}</code>" if order['twofa'] != "None" else f"🔓 <b>2FA:</b> <code>Disabled (No Password)</code>"
                     msg = (f"{P_YES} <b>Latest OTP Fetched!</b>\n\n"
