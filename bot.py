@@ -123,14 +123,13 @@ PREMIUM_EMOJIS = {
     "flower": "6073117703965511893",
     "check": "6147460667281511517",
     "crown": "6235252066554484059",
-    "love": "6154284734659697310",
+    "kiss": "6154284734659697310",
     "skull": "6089128873893563936",
     "xmas": "6267071898702583835",
     "monkey": "6273627839862411998",
     "gift": "5893175870096414393",
     "angel": "5893411041030707544",
     "devil": "5893079628469246474",
-    "dev" : "6158867181296685529",
 }
 
 
@@ -147,14 +146,13 @@ PE_LOCATION = tg_emoji("location", "📍")
 PE_FLOWER = tg_emoji("flower", "🌸")
 PE_CHECK = tg_emoji("check", "✅")
 PE_CROWN = tg_emoji("crown", "👑")
-PE_LOVE = tg_emoji("love", "❤️")
+PE_KISS = tg_emoji("kiss", "❤️")
 PE_SKULL = tg_emoji("skull", "💀")
 PE_XMAS = tg_emoji("xmas", "🎄")
 PE_MONKEY = tg_emoji("monkey", "🐵")
 PE_GIFT = tg_emoji("gift", "🎁")
 PE_ANGEL = tg_emoji("angel", "😇")
 PE_DEVIL = tg_emoji("devil", "😈")
-PE_PC = tg_emoji("dev", "👨‍💻")
 
 # ================= UI ICONS =================
 P_YES = PE_CHECK
