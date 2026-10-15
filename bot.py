@@ -24,7 +24,14 @@ from telethon.errors import (
     PhoneNumberBannedError,
     FloodWaitError,
 )
-from telethon.tl.types import SentCodeTypeApp, SentCodeTypeCall
+try:
+    from telethon.tl.types import SentCodeTypeApp, SentCodeTypeCall
+except ImportError:
+    try:
+        from telethon.tl.types.auth import SentCodeTypeApp, SentCodeTypeCall
+    except ImportError:
+        class SentCodeTypeApp: pass   # fallback: is version me ye type nahi milta, bot phir bhi chalega
+        class SentCodeTypeCall: pass
 from telethon.tl.types import ReplyKeyboardMarkup, KeyboardButtonRow, KeyboardButton
 from telethon.extensions import html as tl_html
 from telethon.tl import types as tl_types
