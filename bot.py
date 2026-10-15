@@ -123,7 +123,7 @@ PREMIUM_EMOJIS = {
     "flower": "6073117703965511893",
     "check": "6147460667281511517",
     "crown": "6235252066554484059",
-    "kiss": "6154284734659697310",
+    "kiss": "6116282026506065674",
     "skull": "6089128873893563936",
     "xmas": "6267071898702583835",
     "monkey": "6273627839862411998",
@@ -146,7 +146,7 @@ PE_LOCATION = tg_emoji("location", "📍")
 PE_FLOWER = tg_emoji("flower", "🌸")
 PE_CHECK = tg_emoji("check", "✅")
 PE_CROWN = tg_emoji("crown", "👑")
-PE_KISS = tg_emoji("kiss", "❤️")
+PE_KISS = tg_emoji("kiss", "😘")
 PE_SKULL = tg_emoji("skull", "💀")
 PE_XMAS = tg_emoji("xmas", "🎄")
 PE_MONKEY = tg_emoji("monkey", "🐵")
