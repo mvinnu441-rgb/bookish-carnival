@@ -134,61 +134,62 @@ PREMIUM_EMOJIS = {
 
 
 def tg_emoji(name, fallback):
-    emoji_id = PREMIUM_EMOJIS.get(name)
+    emoji_id = os.getenv("PE_" + name.upper()) or PREMIUM_EMOJIS.get(name)
     if USE_PREMIUM_EMOJIS and emoji_id:
         return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
     return fallback
 
 
-PE_HEART = tg_emoji("heart_fire", "❤️‍🔥")
-PE_LIGHTNING = tg_emoji("lightning", "⚡")
-PE_LOCATION = tg_emoji("location", "📍")
-PE_FLOWER = tg_emoji("flower", "🌸")
-PE_CHECK = tg_emoji("check", "✅")
-PE_CROWN = tg_emoji("crown", "👑")
-PE_KISS = tg_emoji("kiss", " ")
-PE_SKULL = tg_emoji("skull", "💀")
-PE_XMAS = tg_emoji("xmas", "🎄")
-PE_MONKEY = tg_emoji("monkey", "🐵")
-PE_GIFT = tg_emoji("gift", "🎁")
-PE_ANGEL = tg_emoji("angel", "😇")
-PE_DEVIL = tg_emoji("devil", "😈")
+PE_HEART = tg_emoji("heart_fire", "💖")
+PE_LIGHTNING = tg_emoji("lightning", "🚀")
+PE_LOCATION = tg_emoji("location", "🗺️")
+PE_FLOWER = tg_emoji("flower", "🌺")
+PE_CHECK = tg_emoji("check", "✔️")
+PE_CROWN = tg_emoji("crown", "🏆")
+PE_KISS = tg_emoji("kiss", "😍")
+PE_SKULL = tg_emoji("skull", "☠️")
+PE_XMAS = tg_emoji("xmas", "✨")
+PE_MONKEY = tg_emoji("monkey", "🦄")
+PE_GIFT = tg_emoji("gift", "🎉")
+PE_ANGEL = tg_emoji("angel", "🌟")
+PE_DEVIL = tg_emoji("devil", "🔥")
 
 # ================= UI ICONS =================
 P_YES = PE_CHECK
-P_NO = '❌'
-P_PKG = '📦'
-P_MONEY = '💰'
-P_USDT = '💲'
+P_NO = '🚫'
+P_PKG = '🗃️'
+P_MONEY = '🪙'
+P_USDT = '💵'
 P_INR = '₹'
-P_TG = '✈️'
+P_TG = '📡'
 P_GIFT = PE_GIFT
-P_STATS = '📊'
-P_CARD = '💳'
-P_USERS = '👥'
-P_CAL = '📅'
-P_PC = '💻'
-P_EYE = '👁️'
-P_UPI = '🏦'
-P_CW = '👛'
+P_STATS = '📈'
+P_CARD = '💠'
+P_USERS = '🫂'
+P_CAL = '🗓️'
+P_PC = '🖥️'
+P_EYE = '🔎'
+P_UPI = '🏛️'
+P_CW = '👝'
 P_ON = '🟢'
 P_OFF = '🔴'
-P_ID = '🆔'
-P_KEY = '⌨️'
+P_ID = '🪪'
+P_KEY = '🎛️'
 P_GLOBE = PE_LOCATION
-P_CART = '🛒'
-P_STORE = '🏬'
-P_OTP = '🔢'
-P_2FA = '🔐'
-P_FLAG = '🏳️'
-P_PHONE = '📱'
-P_WAIT = '⏳'
-P_TIME = '⏰'
-P_WARN = '⚠️'
-P_DOC = '📃'
-P_SOS = '🆘'
-P_ASST = '🤖'
-P_ACC = '👤'
+P_CART = '🛍️'
+P_STORE = '🏪'
+P_OTP = '🔑'
+P_2FA = '🛡️'
+P_FLAG = '🚩'
+P_PHONE = '📲'
+P_WAIT = '⌛'
+P_TIME = '🕒'
+P_WARN = '🚨'
+P_DOC = '📝'
+P_SOS = '🛟'
+P_ASST = '🧠'
+P_ACC = '🧑'
+DIV = "━━━━━━━━━━━━━━━━━━━━"
 
 # ================= LOGGING (config validate se pehle chahiye) =================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -642,7 +643,7 @@ async def log_primary_deposit(uid, amt, method):
         t = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         msg = (f"{PE_GIFT} <b>NEW DEPOSIT SUCCESSFUL</b>\n\n"
                f"{P_ACC} Uꜱᴇʀ ID: <code>{uid}</code>\n"
-               f"👤 Uꜱᴇʀɴᴀᴍᴇ: @{username}\n"
+               f"🧑 Uꜱᴇʀɴᴀᴍᴇ: @{username}\n"
                f"{P_MONEY} Aᴍᴏᴜɴᴛ: {P_INR}{amt}\n"
                f"{P_CARD} Mᴇᴛʜᴏᴅ: {method}\n"
                f"{P_TIME} Tɪᴍᴇ: {t}\n\n"
@@ -670,35 +671,35 @@ async def log_primary_purchase(uid, country, price, amount, year, qty):
 # ================= MENU HELPERS =================
 def get_persistent_menu(uid):
     rows = [
-        [KeyboardButton("🛒 Buy Account"), KeyboardButton("👤 My Profile")],
-        [KeyboardButton("📁 Buy Sessions"), KeyboardButton("🎁 Refer & Earn")],
-        [KeyboardButton("💰 Deposit"), KeyboardButton("📊 My Stats")],
-        [KeyboardButton("📞 Support")]
+        [KeyboardButton("🛍️ Buy Account"), KeyboardButton("🧑 My Profile")],
+        [KeyboardButton("📁 Buy Sessions"), KeyboardButton("🎉 Refer & Earn")],
+        [KeyboardButton("🪙 Deposit"), KeyboardButton("📈 My Stats")],
+        [KeyboardButton("☎️ Support")]
     ]
-    if is_admin(uid): rows.append([KeyboardButton("🔐 Admin Panel")])
+    if is_admin(uid): rows.append([KeyboardButton("🛡️ Admin Panel")])
     return ReplyKeyboardMarkup([KeyboardButtonRow(r) for r in rows], resize=True)
 
 
 def get_terms_buttons():
     return [
-        [Button.url("📜 Read Terms & Conditions", TERMS_URL)],
-        [Button.inline("✅ Accept", "tc_accept"), Button.inline("❌ Reject", "tc_reject")]
+        [Button.url("📑 Read Terms & Conditions", TERMS_URL)],
+        [Button.inline("✔️ Accept", "tc_accept"), Button.inline("🚫 Reject", "tc_reject")]
     ]
 
 
 def get_support_buttons():
     buttons = [
-        [Button.url("📩 Support", get_support_url())],
-        [Button.url("📜 Terms & Conditions", TERMS_URL)]
+        [Button.url("💌 Support", get_support_url())],
+        [Button.url("📑 Terms & Conditions", TERMS_URL)]
     ]
     if JOIN_URLS:
-        buttons.append([Button.url("📢 Channel", JOIN_URLS[0])])
+        buttons.append([Button.url("📣 Channel", JOIN_URLS[0])])
     return buttons
 
 
 def get_join_buttons():
-    buttons = [[Button.url(f"📢 Join Channel {i+1}", link)] for i, link in enumerate(JOIN_URLS) if link]
-    buttons.append([Button.inline("✅ Verify Joined", "verify_join")])
+    buttons = [[Button.url(f"📣 Join Channel {i+1}", link)] for i, link in enumerate(JOIN_URLS) if link]
+    buttons.append([Button.inline("✔️ Verify Joined", "verify_join")])
     return buttons
 
 async def build_welcome(uid):
@@ -707,14 +708,14 @@ async def build_welcome(uid):
         link = (f"{P_GLOBE} <code>https://t.me/{me.username}?start=ref_{uid}</code>"
                 if me.username else f"{P_GLOBE} <i>Set a public bot username.</i>")
         ref_part = (f"{P_GIFT} <b>Refer & Earn:</b>\n"
-                    f"Invite friends and earn per refer {P_INR}{get_ref_bonus()}\n{link}")
+                    f"Invite friends and earn per refer {P_INR}{get_ref_bonus()}\n\n{link}")
     else:
         ref_part = (f"{P_OFF} <b>Referral service is temporarily off.</b>\n\n"
                     f"Please check back later.")
-    return (f"{PE_HEART} <b>Welcome to Vinnu Account Store!</b>\n\n"
-            f"{PE_GIFT} <b>Premium services:</b> Buy accounts, sessions, and top up instantly.\n"
-            f"{ref_part}\n\n"
-            f"👨‍💻 <b>Developer:</b> @vinnu_exe")
+    return (f"{PE_HEART} <b>Welcome to Vinnu Account Store!</b>\n{DIV}\n\n"
+            f"{PE_GIFT} <b>Premium services:</b> Buy accounts, sessions, and top up instantly.\n\n"
+            f"{ref_part}\n\n{DIV}\n"
+            f"🧑‍💻 <b>Developer:</b> @vinnu_exe")
 
 async def refer_handler(event):
     await bot.send_message(event.chat_id, await build_welcome(event.sender_id))
@@ -736,14 +737,14 @@ def format_payment_buttons(buttons):
     return res
 
 async def deposit_menu(event):
-    msg = f"{P_CARD} <b>Select Payment Method:</b>\n\n{PE_LIGHTNING} Choose Automatic for instant credit.\n{P_WAIT} Choose Manual for other methods."
+    msg = f"{P_CARD} <b>Select Payment Method:</b>\n\n{PE_LIGHTNING} Choose Automatic for instant credit.\n\n{P_WAIT} Choose Manual for other methods."
     flat_buttons = [
-        Button.inline("⚡ UPI Automatic", "dep_upi"),
-        Button.inline("👛 Cwallet ( +5% )", "depm_Cwallet")
+        Button.inline("🚀 UPI Automatic", "dep_upi"),
+        Button.inline("👝 Cwallet ( +5% )", "depm_Cwallet")
     ]
     customs = cur.execute("SELECT name FROM custom_payments").fetchall()
     for c in customs:
-        flat_buttons.append(Button.inline(f"💳 {c[0]}", f"depm_{c[0]}"))
+        flat_buttons.append(Button.inline(f"💠 {c[0]}", f"depm_{c[0]}"))
     
     btns = format_payment_buttons(flat_buttons)
     await bot.send_message(event.chat_id, msg, buttons=btns)
@@ -753,8 +754,8 @@ def get_keypad():
         [Button.inline("1", "kp_1"), Button.inline("2", "kp_2"), Button.inline("3", "kp_3")],
         [Button.inline("4", "kp_4"), Button.inline("5", "kp_5"), Button.inline("6", "kp_6")],
         [Button.inline("7", "kp_7"), Button.inline("8", "kp_8"), Button.inline("9", "kp_9")],
-        [Button.inline("🔙 Del", "kp_del"), Button.inline("0", "kp_0"), Button.inline("✅ Confirm", "kp_done")],
-        [Button.inline("❌ Cancel", "cancel_action")]
+        [Button.inline("◀️ Del", "kp_del"), Button.inline("0", "kp_0"), Button.inline("✔️ Confirm", "kp_done")],
+        [Button.inline("🚫 Cancel", "cancel_action")]
     ]
 
 def get_admin_custom_keypad(dep_id):
@@ -762,14 +763,14 @@ def get_admin_custom_keypad(dep_id):
         [Button.inline("1", f"dkp|{dep_id}|1"), Button.inline("2", f"dkp|{dep_id}|2"), Button.inline("3", f"dkp|{dep_id}|3")],
         [Button.inline("4", f"dkp|{dep_id}|4"), Button.inline("5", f"dkp|{dep_id}|5"), Button.inline("6", f"dkp|{dep_id}|6")],
         [Button.inline("7", f"dkp|{dep_id}|7"), Button.inline("8", f"dkp|{dep_id}|8"), Button.inline("9", f"dkp|{dep_id}|9")],
-        [Button.inline("🔙 Del", f"dkp|{dep_id}|del"), Button.inline("0", f"dkp|{dep_id}|0"), Button.inline("✅ Confirm", f"dkp|{dep_id}|conf")],
-        [Button.inline("❌ Cancel", f"dkp|{dep_id}|cancel")]
+        [Button.inline("◀️ Del", f"dkp|{dep_id}|del"), Button.inline("0", f"dkp|{dep_id}|0"), Button.inline("✔️ Confirm", f"dkp|{dep_id}|conf")],
+        [Button.inline("🚫 Cancel", f"dkp|{dep_id}|cancel")]
     ]
 
 async def manual_deposit_init(event, method):
     uid = event.sender_id
     deposit_input[uid] = {'step': 'wait_amt', 'method': method}
-    await event.edit(f"{P_CARD} <b>{method} Deposit</b>\n\n👇 Reply to this message with the <b>AMOUNT</b> in ₹ (INR) you want to deposit.", buttons=[[Button.inline("❌ Cancel", "cancel_action")]])
+    await event.edit(f"{P_CARD} <b>{method} Deposit</b>\n\n⬇️ Reply to this message with the <b>AMOUNT</b> in ₹ (INR) you want to deposit.", buttons=[[Button.inline("🚫 Cancel", "cancel_action")]])
 
 async def init_upi_keypad(event):
     uid = event.sender_id
@@ -788,7 +789,7 @@ async def keypad_logic(event):
     elif action == "del": curr = curr[:-1] or "0"
     elif action == "done":
         amt = int(curr)
-        if amt < 1: return await event.answer("⚠️ Minimum Deposit is ₹1", alert=True)
+        if amt < 1: return await event.answer("🚨 Minimum Deposit is ₹1", alert=True)
         return await show_upi_qr(event, amt)
     
     deposit_input[uid] = {'step': 'upi_keypad', 'val': curr}
@@ -808,15 +809,15 @@ async def show_upi_qr(event, amount):
         db.commit()
         
         msg = (f"{PE_LIGHTNING} <b>AUTOMATIC UPI PAYMENT</b>\n\n"
-               f"{P_MONEY} Amount: <code>₹{amount}</code>\n"
+               f"{P_MONEY} Amount: <code>₹{amount}</code>\n\n"
                f"{P_ID} Order ID: <code>{order_id}</code>\n\n"
-               f"👇 <b>Scan the QR below or Pay to:</b>\n<code>{UPI_ID}</code>\n\n"
-               f"⚠️ <b>AFTER PAYING:</b> Tap the button below to submit your 12-Digit UTR/Reference Number.")
+               f"⬇️ <b>Scan the QR below or Pay to:</b>\n<code>{UPI_ID}</code>\n\n"
+               f"🚨 <b>AFTER PAYING:</b> Tap the button below to submit your 12-Digit UTR/Reference Number.")
         
         await event.delete()
         await bot.send_file(uid, qr_url, caption=msg, buttons=[
-            [Button.inline("✅ Submit UTR (12 Digit)", f"submit_utr_{order_id}")], 
-            [Button.inline("❌ Cancel", "cancel_action")]
+            [Button.inline("✔️ Submit UTR (12 Digit)", f"submit_utr_{order_id}")], 
+            [Button.inline("🚫 Cancel", "cancel_action")]
         ])
     except Exception as e: 
         await bot.send_message(uid, f"{P_NO} Error: {str(e)}")
@@ -827,24 +828,24 @@ async def auto_check_upi_task(uid, order_id, msg_to_edit):
 async def verify_upi_payment(event, order_id):
     uid = event.sender_id
     row = cur.execute("SELECT amount, status FROM upi_orders WHERE order_id=?", (order_id,)).fetchone()
-    if not row: return await event.answer("❌ Order not found.", alert=True)
-    if row[1] == 'success': return await event.answer("✅ Already credited!", alert=True)
+    if not row: return await event.answer("🚫 Order not found.", alert=True)
+    if row[1] == 'success': return await event.answer("✔️ Already credited!", alert=True)
 
     chat = event.chat_id
     await event.delete()
     
     async with bot.conversation(chat, timeout=120) as conv:
         try:
-            await conv.send_message("👇 <b>Please enter the 12-Digit UTR / Reference Number of your payment:</b>\n\n<i>(Type /cancel to abort)</i>")
+            await conv.send_message("⬇️ <b>Please enter the 12-Digit UTR / Reference Number of your payment:</b>\n\n<i>(Type /cancel to abort)</i>")
             resp = await conv.get_response()
             utr_number = resp.raw_text.strip()
             
             if utr_number == "/cancel":
-                return await conv.send_message("❌ Cancelled.")
+                return await conv.send_message("🚫 Cancelled.")
             if len(utr_number) < 8:
-                return await conv.send_message("❌ Invalid UTR. Please try again.")
+                return await conv.send_message("🚫 Invalid UTR. Please try again.")
             
-            await conv.send_message(f"⏳ Verifying UTR: <code>{utr_number}</code>...\n<i>Please wait...</i>")
+            await conv.send_message(f"⌛ Verifying UTR: <code>{utr_number}</code>...\n<i>Please wait...</i>")
             
             amt = int(row[0])
             
@@ -859,15 +860,15 @@ async def verify_upi_payment(event, order_id):
                    f"Please verify this UTR in your Payment app.")
             
             btns = [
-                [Button.inline(f"✅ Accept (₹{amt})", f"dep_acc|{dep_id}|{uid}|UPI|exact|{amt}"), 
-                 Button.inline("❌ Reject", f"dep_rej|{dep_id}|{uid}")]
+                [Button.inline(f"✔️ Accept (₹{amt})", f"dep_acc|{dep_id}|{uid}|UPI|exact|{amt}"), 
+                 Button.inline("🚫 Reject", f"dep_rej|{dep_id}|{uid}")]
             ]
             
             await bot.send_message(LOG_CHANNEL_ID, cap, buttons=btns)
-            await conv.send_message("✅ <b>UTR Submitted successfully!</b>\nAmount will be added to your balance as soon as our system/admin verifies the payment.")
+            await conv.send_message("✔️ <b>UTR Submitted successfully!</b>\nAmount will be added to your balance as soon as our system/admin verifies the payment.")
             
         except Exception as e:
-            await conv.send_message("❌ Time out or Error. Try again.")
+            await conv.send_message("🚫 Time out or Error. Try again.")
 
 # ================= BUYING FLOW =================
 CATEGORIES = [
@@ -888,7 +889,7 @@ async def show_categories(event, flow):
     rows = cur.execute("SELECT category, COUNT(*) FROM stock WHERE available=1 GROUP BY category").fetchall()
     counts = {c: n for c, n in rows}
     title = f"{PE_LIGHTNING} <b>Bulk Sessions Menu</b>" if flow == 'bulk' else f"{PE_HEART} <b>Single Account Menu</b>"
-    msg = f"{title}\n\n📦 <b>Choose Account Type:</b>\n\n{P_USDT} Rate: 1 USDT = {P_INR}{get_usdt_rate()}"
+    msg = f"{title}\n\n🗃️ <b>Choose Account Type:</b>\n\n{P_USDT} Rate: 1 USDT = {P_INR}{get_usdt_rate()}"
 
     btns = []
     for key, icon, label in CATEGORIES:
@@ -912,12 +913,12 @@ async def show_countries(event, flow, category, page=1):
 
     if not rows and page == 1:
         err_msg = f"{P_NO} <b>{cat_label(category)}: Stock is Empty right now. Check back later!</b>"
-        btns = [[Button.inline("⬅️ Back", f"catmenu|{flow}")]]
+        btns = [[Button.inline("◀️ Back", f"catmenu|{flow}")]]
         if isinstance(event, events.CallbackQuery.Event): return await event.edit(err_msg, buttons=btns)
         else: return await event.respond(err_msg, buttons=btns)
 
     title = f"{PE_LIGHTNING} <b>Bulk Sessions Menu</b>" if flow == 'bulk' else f"{PE_HEART} <b>Single Account Menu</b>"
-    msg = f"{title}\n📦 Type: {cat_label(category)}\n\n{P_GLOBE} <b>Select a region below to view available numbers (Page {page}).</b>\n{P_USDT} Rate: 1 USDT = {P_INR}{get_usdt_rate()}\n\n"
+    msg = f"{title}\n\n🗃️ Type: {cat_label(category)}\n\n{P_GLOBE} <b>Select a region below to view available numbers (Page {page}).</b>\n\n{P_USDT} Rate: 1 USDT = {P_INR}{get_usdt_rate()}\n\n"
 
     btns = []
     for (i, n, c) in rows:
@@ -927,7 +928,7 @@ async def show_countries(event, flow, category, page=1):
     if page > 1: nav.append(Button.inline("Prev", f"pg_c|{flow}|{category}|{page-1}"))
     if offset + limit < total: nav.append(Button.inline("Next", f"pg_c|{flow}|{category}|{page+1}"))
     if nav: btns.append(nav)
-    btns.append([Button.inline("⬅️ Back", f"catmenu|{flow}")])
+    btns.append([Button.inline("◀️ Back", f"catmenu|{flow}")])
     btns.append([Button.inline("Cancel", "cancel_action")])
 
     if isinstance(event, events.CallbackQuery.Event): await event.edit(msg, buttons=btns)
@@ -935,13 +936,13 @@ async def show_countries(event, flow, category, page=1):
 
 async def show_years(event, flow, category, country):
     rows = cur.execute("SELECT account_year, price, COUNT(*) FROM stock WHERE available=1 AND category=? AND country_name LIKE ? GROUP BY account_year, price ORDER BY account_year DESC", (category, f"{country}%",)).fetchall()
-    if not rows: return await event.answer("❌ Out of stock for this country.", alert=True)
+    if not rows: return await event.answer("🚫 Out of stock for this country.", alert=True)
 
     uid = event.sender_id
     disc_row = cur.execute("SELECT discount FROM users WHERE user_id=?", (uid,)).fetchone()
     discount = disc_row[0] if disc_row else 0
 
-    msg = f"{PE_FLOWER} <b>Select Account Year</b>\n📦 Type: {cat_label(category)}\n{P_GLOBE} Country: <b>{country}</b>\n\n"
+    msg = f"{PE_FLOWER} <b>Select Account Year</b>\n\n🗃️ Type: {cat_label(category)}\n\n{P_GLOBE} Country: <b>{country}</b>\n\n"
     btns = []
 
     for (y, p, c) in rows:
@@ -967,52 +968,52 @@ def user_final_price(uid, base):
 async def show_account_info(event, category, country, year, price_str):
     uid, base = event.sender_id, int(price_str)
     row = cur.execute("SELECT country_icon, COUNT(*) FROM stock WHERE available=1 AND category=? AND country_name LIKE ? AND account_year=? AND price=?", (category, f"{country}%", int(year), base)).fetchone()
-    if not row or not row[1]: return await event.answer("❌ Out of stock!", alert=True)
+    if not row or not row[1]: return await event.answer("🚫 Out of stock!", alert=True)
     icon, cnt = row
     final = user_final_price(uid, base)
-    msg = (f"⚡ <b>Telegram Account Info</b>\n\n"
-           f"🌍 <b>Country :</b> {icon} {country}\n"
-           f"📦 <b>Type :</b> {cat_label(category)}\n"
-           f"💸 <b>Price :</b> {usd_inr(final)}\n"
-           f"📦 <b>Available :</b> {cnt}\n"
-           f"🔍 Reliable | Affordable | Good Quality\n\n"
-           f"⚠️ <b>Important:</b> Please use Graph Manager / Plus Messenger.\n"
+    msg = (f"🚀 <b>Telegram Account Info</b>\n\n"
+           f"🌍 <b>Country :</b> {icon} {country}\n\n"
+           f"🗃️ <b>Type :</b> {cat_label(category)}\n\n"
+           f"💶 <b>Price :</b> {usd_inr(final)}\n\n"
+           f"🗃️ <b>Available :</b> {cnt}\n\n"
+           f"⭐ Reliable | Affordable | Good Quality\n\n"
+           f"🚨 <b>Important:</b> Please use Graph Manager / Plus Messenger.\n"
            f"🚫 We are not responsible for any freeze/ban")
-    btns = [[Button.inline("🛒 Buy Now", f"pc|{category}|{country}|{year}|{base}")],
-            [Button.inline("⬅️ Back", f"bc|single|{category}|{country}")]]
+    btns = [[Button.inline("🛍️ Buy Now", f"pc|{category}|{country}|{year}|{base}")],
+            [Button.inline("◀️ Back", f"bc|single|{category}|{country}")]]
     await event.edit(msg, buttons=btns)
 
 async def confirm_purchase(event, category, country, year, price_str):
     uid, base = event.sender_id, int(price_str)
     acc = cur.execute("SELECT phone, country_icon, account_year, twofa FROM stock WHERE available=1 AND category=? AND country_name LIKE ? AND account_year=? AND price=? ORDER BY phone LIMIT 1", (category, f"{country}%", int(year), base)).fetchone()
-    if not acc: return await event.answer("❌ Sold out!", alert=True)
+    if not acc: return await event.answer("🚫 Sold out!", alert=True)
     phone, icon, yr, twofa = acc
 
     bal_row = cur.execute("SELECT balance FROM users WHERE user_id=?", (uid,)).fetchone()
     bal = bal_row[0] if bal_row else 0
     final = user_final_price(uid, base)
     age_y = max(datetime.now().year - int(yr), 0)
-    has_2fa = "✅ Yes" if twofa and twofa != "None" else "❌ No"
-    after = (f"{P_INR}{bal - final}" if bal >= final else "⚠️ Insufficient Balance")
-    after_line = f"💸 After: {usd_inr(bal - final)}" if bal >= final else f"💸 After: {after}"
+    has_2fa = "✔️ Yes" if twofa and twofa != "None" else "🚫 No"
+    after = (f"{P_INR}{bal - final}" if bal >= final else "🚨 Insufficient Balance")
+    after_line = f"💶 After: {usd_inr(bal - final)}" if bal >= final else f"💶 After: {after}"
 
     msg = (f"━━━━━━━━━━━━━━━━━━━━\n"
-           f"🛒 <b>PURCHASE CONFIRMATION</b>\n"
+           f"🛍️ <b>PURCHASE CONFIRMATION</b>\n"
            f"━━━━━━━━━━━━━━━━━━━━\n\n"
            f"🏷️ {icon} {country}\n"
-           f"📦 Type: {cat_label(category)}\n\n"
+           f"🗃️ Type: {cat_label(category)}\n\n"
            f"<b>Account Details:</b>\n"
-           f"📞 Phone: <code>{mask_phone(phone)}</code>\n"
-           f"⏰ Age: {yr} ({age_y}Y)\n"
-           f"🔐 2FA: {has_2fa}\n\n"
+           f"☎️ Phone: <code>{mask_phone(phone)}</code>\n"
+           f"🕒 Age: {yr} ({age_y}Y)\n"
+           f"🛡️ 2FA: {has_2fa}\n\n"
            f"<b>Payment:</b>\n"
-           f"💰 Price: {usd_inr(final)}\n"
-           f"💵 Balance: {usd_inr(bal)}\n"
+           f"🪙 Price: {usd_inr(final)}\n"
+           f"💳 Balance: {usd_inr(bal)}\n"
            f"{after_line}\n\n"
-           f"✅ Please use Plus Messenger.\n"
+           f"✔️ Please use Plus Messenger.\n"
            f"🚫 We are not responsible for any freeze/ban")
-    btns = [[Button.inline("✅ Confirm Purchase", f"buy_cf|{category}|{country}|{year}|{base}")],
-            [Button.inline("❌ Cancel", "cancel_action")]]
+    btns = [[Button.inline("✔️ Confirm Purchase", f"buy_cf|{category}|{country}|{year}|{base}")],
+            [Button.inline("🚫 Cancel", "cancel_action")]]
     await event.edit(msg, buttons=btns)
 
 async def process_purchase(event, category, country, year_str, price_str):
@@ -1026,13 +1027,13 @@ async def process_purchase(event, category, country, year_str, price_str):
         row = cur.execute("SELECT phone, session_file, country_icon, account_year, twofa FROM stock WHERE category=? AND country_name LIKE ? AND account_year=? AND price=? AND available=1 ORDER BY phone LIMIT 1", (category, f"{country}%", int(year_str), base_price)).fetchone()
 
         if not row:
-            return await event.answer("❌ Sold out! Another user just bought this account.", alert=True)
+            return await event.answer("🚫 Sold out! Another user just bought this account.", alert=True)
         
         phone, sess, c_icon, actual_year, twofa_pass = row
 
         cur.execute("UPDATE users SET balance = balance - ? WHERE user_id=? AND balance >= ?", (final_price, uid, final_price))
         if cur.rowcount == 0:
-            return await event.answer(f"❌ Insufficient Balance! Need ₹{final_price}", alert=True)
+            return await event.answer(f"🚫 Insufficient Balance! Need ₹{final_price}", alert=True)
 
         cur.execute("UPDATE stock SET available=0 WHERE phone=?", (phone,))
         db.commit()
@@ -1054,9 +1055,9 @@ async def process_purchase(event, category, country, year_str, price_str):
         return await event.edit(f"{P_NO} <b>Account Invalid.</b> Money refunded. Try buying another.")
 
     msg = (f"{PE_LIGHTNING} <b>Order Active!</b>\n\n"
-           f"{P_PHONE} <b>Phone:</b> <code>{phone}</code>\n"
+           f"{P_PHONE} <b>Phone:</b> <code>{phone}</code>\n\n"
            f"{P_FLAG} <b>Country:</b> {c_icon} {country}\n\n"
-           f"🔻 <b>INSTRUCTIONS:</b>\n"
+           f"🔽 <b>INSTRUCTIONS:</b>\n"
            f"1. Open Telegram & Add Account\n"
            f"2. Enter the number above.\n"
            f"3. {P_WAIT} <b>Please wait!</b> The bot is actively listening for your OTP and will send it automatically once Telegram delivers it.\n\n"
@@ -1097,18 +1098,18 @@ async def auto_otp_task(phone):
                     
                     await log_primary_purchase(uid, order['country'], order['price'], order['price'], order['year'], 1)
                 
-                twofa_text = f"{P_2FA} <b>2FA:</b> <code>{order['twofa']}</code>" if order['twofa'] != "None" else f"🔓 <b>2FA:</b> <code>Disabled (No Password)</code>"
+                twofa_text = f"{P_2FA} <b>2FA:</b> <code>{order['twofa']}</code>" if order['twofa'] != "None" else f"🗝️ <b>2FA:</b> <code>Disabled (No Password)</code>"
                 msg_text = (f"{PE_CHECK} <b>Latest OTP Fetched!</b>\n\n"
-                            f"{P_PHONE} <b>Phone:</b> <code>{phone}</code>\n"
-                            f"{P_FLAG} <b>Country:</b> {order['c_icon']} {order['country']}\n"
-                            f"{P_OTP} <b>OTP:</b> <code>{code}</code>\n"
+                            f"{P_PHONE} <b>Phone:</b> <code>{phone}</code>\n\n"
+                            f"{P_FLAG} <b>Country:</b> {order['c_icon']} {order['country']}\n\n"
+                            f"{P_OTP} <b>OTP:</b> <code>{code}</code>\n\n"
                             f"{twofa_text}")
                 
                 try: 
-                    await bot.edit_message(uid, msg_id, msg_text, buttons=[[Button.inline("🔄 Get OTP Again", f"get_otp_again|{phone}")], [Button.inline("🚪 Finish & Logout", f"logout_bot|{phone}")]])
+                    await bot.edit_message(uid, msg_id, msg_text, buttons=[[Button.inline("🔁 Get OTP Again", f"get_otp_again|{phone}")], [Button.inline("🔚 Finish & Logout", f"logout_bot|{phone}")]])
                 except MessageNotModifiedError: pass
                 except Exception: 
-                    await bot.send_message(uid, msg_text, buttons=[[Button.inline("🔄 Get OTP Again", f"get_otp_again|{phone}")], [Button.inline("🚪 Finish & Logout", f"logout_bot|{phone}")]])
+                    await bot.send_message(uid, msg_text, buttons=[[Button.inline("🔁 Get OTP Again", f"get_otp_again|{phone}")], [Button.inline("🔚 Finish & Logout", f"logout_bot|{phone}")]])
                 return 
         except Exception: pass
         await asyncio.sleep(6) 
@@ -1130,7 +1131,7 @@ async def init_session_purchase(event, category, country, year, price_str):
     uid, price = event.sender_id, int(price_str)
     stock_row = cur.execute("SELECT COUNT(*) FROM stock WHERE category=? AND country_name LIKE ? AND account_year=? AND price=? AND available=1", (category, f"{country}%", int(year), price)).fetchone()
     stock = stock_row[0] if stock_row else 0
-    if stock == 0: return await event.answer("❌ Out of stock!", alert=True)
+    if stock == 0: return await event.answer("🚫 Out of stock!", alert=True)
     
     session_buy_state[uid] = {'category': category, 'country': country, 'year': year, 'price': price, 'stock': stock}
     disc_row = cur.execute("SELECT discount FROM users WHERE user_id=?", (uid,)).fetchone()
@@ -1138,10 +1139,10 @@ async def init_session_purchase(event, category, country, year, price_str):
     p_disp = price if discount == 0 else int(price * (100 - discount) / 100)
     
     msg = (f"{PE_GIFT} <b>Buy {country} ({year}) Sessions</b>\n"
-           f"📦 Type: {cat_label(category)}\n\n"
+           f"🗃️ Type: {cat_label(category)}\n\n"
            f"{P_MONEY} <b>Price per session:</b> {P_INR}{p_disp}\n"
            f"{P_PKG} <b>Available Stock:</b> {stock}\n\n"
-           f"👇 <b>Reply to this message</b> with the <b>Number of Sessions</b> you want to buy.")
+           f"⬇️ <b>Reply to this message</b> with the <b>Number of Sessions</b> you want to buy.")
     await event.edit(msg, buttons=[[Button.inline("Cancel", "cancel_action")]])
 
 async def process_bulk_sessions(event, uid, qty, state, final_cost):
@@ -1185,10 +1186,10 @@ async def process_bulk_sessions(event, uid, qty, state, final_cost):
             
         caption = (
     f"{PE_GIFT} <b>Bulk Purchase Successful!</b>\n\n"
-    f"{P_FLAG} Country: {country}\n"
-    f"📦 Type: {cat_label(category)}\n"
-    f"{P_PKG} Quantity: {qty}\n"
-    f"{P_CARD} Total Paid: {P_INR}{final_cost}\n"
+    f"{P_FLAG} Country: {country}\n\n"
+    f"🗃️ Type: {cat_label(category)}\n"
+    f"{P_PKG} Quantity: {qty}\n\n"
+    f"{P_CARD} Total Paid: {P_INR}{final_cost}\n\n"
     f"{P_2FA} 2FA: 2007\n\n"
     f"<i>(Note: Sessions are safely provided, the bot does not keep them active)</i>" )
 
@@ -1202,7 +1203,7 @@ async def process_bulk_sessions(event, uid, qty, state, final_cost):
 async def profile_handler(event):
     uid = event.sender_id
     row = cur.execute("SELECT balance, total_deposited, joined_date, discount FROM users WHERE user_id=?", (uid,)).fetchone()
-    if not row: return await bot.send_message(event.chat_id, "⚠️ Error: Please type /start to initialize your account.")
+    if not row: return await bot.send_message(event.chat_id, "🚨 Error: Please type /start to initialize your account.")
     
     bal, dep, date, discount = row
     ref_count_row = cur.execute("SELECT COUNT(*) FROM users WHERE referred_by=?", (uid,)).fetchone()
@@ -1216,10 +1217,10 @@ async def profile_handler(event):
                  f"{P_USERS} <b>Referral Link:</b>\n<i>Set a public bot username to enable referrals.</i>\n\n")
     
     msg = (f"{PE_KISS} <b>USER PROFILE</b>\n\n"
-           f"{P_ID} User ID: <code>{uid}</code>\n"
-           f"{P_MONEY} Balance: <code>${to_usd(bal):.2f} (₹{bal})</code>\n"
-           f"{P_CARD} Deposited: <code>${to_usd(dep):.2f} (₹{dep})</code>{disc_msg}\n"
-           f"{P_USERS} Referred Users: <b>{ref_count}</b>\n"
+           f"{P_ID} User ID: <code>{uid}</code>\n\n"
+           f"{P_MONEY} Balance: <code>${to_usd(bal):.2f} (₹{bal})</code>\n\n"
+           f"{P_CARD} Deposited: <code>${to_usd(dep):.2f} (₹{dep})</code>{disc_msg}\n\n"
+           f"{P_USERS} Referred Users: <b>{ref_count}</b>\n\n"
            f"{P_CAL} Joined: {date[:10]}\n\n"
            f"{ref_block}"
            f"<i>(Share this link with your friends to earn bonuses!)</i>")
@@ -1237,9 +1238,9 @@ async def stats_handler(event, is_callback=False):
     ref_count = ref_row[0] if ref_row else 0
     
     msg = (f"{PE_CROWN} <b>My Statistics</b>\n\n"
-           f"{P_CART} <b>Accounts Bought:</b> {total_orders}\n"
-           f"{P_USERS} <b>Referrals:</b> {ref_count}\n"
-           f"{P_MONEY} <b>Total Spent:</b>\n${to_usd(spent):.2f}\n"
+           f"{P_CART} <b>Accounts Bought:</b> {total_orders}\n\n"
+           f"{P_USERS} <b>Referrals:</b> {ref_count}\n\n"
+           f"{P_MONEY} <b>Total Spent:</b>\n${to_usd(spent):.2f}\n\n"
            f"{P_CARD} <b>Total Deposited:</b>\n${to_usd(dep):.2f}")
     
     btns = [[Button.inline("View Purchase Logs", "page_purchases_1")], [Button.inline("Referral Logs", "view_referrals")]]
@@ -1274,7 +1275,7 @@ async def send_purchase_page(event, uid, page):
 
 async def view_referrals(event):
     refs = cur.execute("SELECT user_id FROM users WHERE referred_by=?", (event.sender_id,)).fetchall()
-    await event.answer(f"👥 You have referred {len(refs)} user(s).", alert=True)
+    await event.answer(f"🫂 You have referred {len(refs)} user(s).", alert=True)
 
 # ================= ADMIN ACTIONS =================
 async def admin_panel_handler(event):
@@ -1292,7 +1293,7 @@ async def admin_panel_handler(event):
         
     r1 = []
     if uid == ADMIN_ID or has_perm(uid, 'p_add_stock'):
-        r1.append(Button.inline("📦 Add Stock (Category)", "adm_catmenu"))
+        r1.append(Button.inline("🗃️ Add Stock (Category)", "adm_catmenu"))
     if r1: btns.append(r1)
 
     r2 = []
@@ -1324,8 +1325,8 @@ async def admin_panel_handler(event):
         btns.append([Button.inline("Manage Admins", "adm_manageadmins")])
 
     header = (f"{PE_CROWN} <b>ADVANCED ADMIN DASHBOARD</b>\n\n"
-              f"{P_USERS} Users: <b>{total_users}</b>\n"
-              f"{P_PKG} Available Stock: <b>{total_stock}</b>\n"
+              f"{P_USERS} Users: <b>{total_users}</b>\n\n"
+              f"{P_PKG} Available Stock: <b>{total_stock}</b>\n\n"
               f"{P_WAIT} Pending Deposits: <b>{pending_deposits}</b>")
     await bot.send_message(event.chat_id, header, buttons=btns)
 
@@ -1340,7 +1341,7 @@ async def manage_admins_menu(event):
 async def edit_admin_menu(event, target_id):
     row = cur.execute("SELECT p_add_stock, p_manage_stock, p_stats, p_bal, p_settings FROM admins WHERE user_id=?", (target_id,)).fetchone()
     if not row: return await event.answer("Admin not found", alert=True)
-    p = ["✅" if x==1 else "❌" for x in row]
+    p = ["✔️" if x==1 else "🚫" for x in row]
     
     btns = [
         [Button.inline(f"Add Stock: {p[0]}", f"adm_tglperm|{target_id}|p_add_stock")],
@@ -1351,7 +1352,7 @@ async def edit_admin_menu(event, target_id):
         [Button.inline("Remove Admin", f"adm_deladmin|{target_id}")],
         [Button.inline("Back", "adm_manageadmins")]
     ]
-    await event.edit(f"✏️ <b>Editing Admin:</b> <code>{target_id}</code>", buttons=btns)
+    await event.edit(f"🖊️ <b>Editing Admin:</b> <code>{target_id}</code>", buttons=btns)
 
 async def send_managestock_catmenu(event):
     btns = [[Button.inline(f"{icon} {label}", f"adm_mscat|{key}")] for key, icon, label in CATEGORIES]
@@ -1376,8 +1377,8 @@ async def send_manage_stock_page(event, category, page):
     if nav: btns.append(nav)
     btns.append([Button.inline("Back", "adm_managestock")])
     if not countries:
-        return await event.edit(f"{PE_LOCATION} <b>Manage Stock</b>\n📦 {cat_label(category)}\n\n{P_NO} Is category me koi stock nahi hai.", buttons=btns)
-    await event.edit(f"{PE_LOCATION} <b>Manage Stock</b> (Page {page})\n📦 {cat_label(category)}\nSelect a country to edit its properties:", buttons=btns)
+        return await event.edit(f"{PE_LOCATION} <b>Manage Stock</b>\n🗃️ {cat_label(category)}\n\n{P_NO} Is category me koi stock nahi hai.", buttons=btns)
+    await event.edit(f"{PE_LOCATION} <b>Manage Stock</b> (Page {page})\n🗃️ {cat_label(category)}\nSelect a country to edit its properties:", buttons=btns)
 
 async def send_manage_stock_country(event, category, c_name):
     years = cur.execute("SELECT DISTINCT account_year FROM stock WHERE category=? AND country_name=? ORDER BY account_year DESC", (category, c_name)).fetchall()
@@ -1392,7 +1393,7 @@ async def send_manage_stock_country(event, category, c_name):
     
     for i in range(0, len(y_btns), 3): btns.append(y_btns[i:i+3])
     btns.append([Button.inline("Back", f"adm_mspg|{category}|1")])
-    await event.edit(f"{flag} <b>Managing: {c_name}</b>\n📦 {cat_label(category)}\nSelect an option to edit:", buttons=btns)
+    await event.edit(f"{flag} <b>Managing: {c_name}</b>\n🗃️ {cat_label(category)}\nSelect an option to edit:", buttons=btns)
 
 # [NEW] Stock ko ek category se dusri category me move karna
 async def send_move_menu(event, category, c_name):
@@ -1404,11 +1405,11 @@ async def send_move_menu(event, category, c_name):
 
 async def do_move_category(event, category, c_name, new_cat):
     if new_cat not in CATEGORY_MAP or new_cat == category:
-        return await event.answer("❌ Invalid category.", alert=True)
+        return await event.answer("🚫 Invalid category.", alert=True)
     cur.execute("UPDATE stock SET category=? WHERE country_name=? AND category=?", (new_cat, c_name, category))
     moved = cur.rowcount
     db.commit()
-    await event.answer(f"✅ {moved} account(s) moved to {CATEGORY_MAP[new_cat][1]}", alert=True)
+    await event.answer(f"✔️ {moved} account(s) moved to {CATEGORY_MAP[new_cat][1]}", alert=True)
     await send_manage_stock_page(event, category, 1)
 
 async def send_autoprice_catmenu(event):
@@ -1441,7 +1442,7 @@ async def send_autoprice_page(event, category, page):
     if nav: btns.append(nav)
     btns.append([Button.inline("Add Custom Country", f"adm_ap_add_country|{category}")])
     btns.append([Button.inline("Back", "adm_autoprice")])
-    await event.edit(f"{PE_LIGHTNING} <b>Auto Price Setup</b> (Page {page})\n📦 {cat_label(category)}\nSelect a country to set fixed prices:", buttons=btns)
+    await event.edit(f"{PE_LIGHTNING} <b>Auto Price Setup</b> (Page {page})\n🗃️ {cat_label(category)}\nSelect a country to set fixed prices:", buttons=btns)
 
 async def send_autoprice_country(event, category, c_name):
     flag = get_flag_by_country_name(c_name)
@@ -1449,7 +1450,7 @@ async def send_autoprice_country(event, category, c_name):
     y_btns = [Button.inline(f"{y}", f"adm_apset|{category}|{c_name}|{y}") for y in range(2024, 1999, -1)]
     for i in range(0, len(y_btns), 4): btns.append(y_btns[i:i+4])
     btns.append([Button.inline("Back", f"adm_appg|{category}|1")])
-    await event.edit(f"{flag} <b>Auto Price: {c_name}</b>\n📦 {cat_label(category)}\nSelect 'Common' for default price, or specific years:", buttons=btns)
+    await event.edit(f"{flag} <b>Auto Price: {c_name}</b>\n🗃️ {cat_label(category)}\nSelect 'Common' for default price, or specific years:", buttons=btns)
 
 async def admin_actions(event):
     data_full = event.data.decode()
@@ -1467,13 +1468,13 @@ async def admin_actions(event):
     if action_data == "catmenu" and has_perm(uid, 'p_add_stock'):
         btns = [[Button.inline(f"{icon} {label}", f"adm_catpick|{key}")] for key, icon, label in CATEGORIES]
         btns.append([Button.inline("Back", "adm_adminmain")])
-        return await event.edit(f"📦 <b>Select category to add stock into:</b>", buttons=btns)
+        return await event.edit(f"🗃️ <b>Select category to add stock into:</b>", buttons=btns)
 
     if action_data.startswith("catpick|") and has_perm(uid, 'p_add_stock'):
         cat = action_data.split("|")[1]
         btns = [[Button.inline("Add Single Acc", f"adm_addstock|{cat}"), Button.inline("Add ZIP", f"adm_addzip|{cat}")],
                 [Button.inline("Back", "adm_catmenu")]]
-        return await event.edit(f"📦 <b>Category:</b> {cat_label(cat)}\n\nChoose how to add stock:", buttons=btns)
+        return await event.edit(f"🗃️ <b>Category:</b> {cat_label(cat)}\n\nChoose how to add stock:", buttons=btns)
 
     if action_data == "togglebot" and has_perm(uid, 'p_settings'):
         new_status = 'off' if is_bot_online() else 'on'
@@ -1537,7 +1538,7 @@ async def admin_actions(event):
         t_id = action_data.split("|")[1]
         cur.execute("DELETE FROM admins WHERE user_id=?", (t_id,))
         db.commit()
-        await event.answer("✅ Admin Removed", alert=True)
+        await event.answer("✔️ Admin Removed", alert=True)
         return await manage_admins_menu(event)
 
     # ---- [CHANGED] Manage Stock: category-wise ----
@@ -1567,7 +1568,7 @@ async def admin_actions(event):
             w = csv.writer(f); w.writerow([i[0] for i in cur.description]); w.writerows(cur.fetchall())
         await bot.send_file(chat, "users_backup.csv", caption=f"{P_USERS} <b>Users Backup CSV</b>")
         os.remove("users_backup.csv")
-        return await event.answer("✅ Backup Generated!", alert=True)
+        return await event.answer("✔️ Backup Generated!", alert=True)
 
     async with bot.conversation(chat, timeout=600) as conv:
         async def get_reply(txt):
@@ -1673,7 +1674,7 @@ async def admin_actions(event):
 
             elif action_data == "addpay" and has_perm(uid, 'p_settings'):
                 name = html.escape((await get_reply(f"{P_CARD} <b>Enter Payment Method Name:</b>\n<i>(e.g., Binance Pay, TRX)</i>")).raw_text)
-                qr_msg = await get_reply(f"📸 <b>Send QR Code Image:</b>\n<i>(Or type <code>skip</code> if no QR needed)</i>")
+                qr_msg = await get_reply(f"🖼️ <b>Send QR Code Image:</b>\n<i>(Or type <code>skip</code> if no QR needed)</i>")
                 qr_path = ""
                 if qr_msg.photo:
                     qr_path = f"qr_{int(time.time())}.jpg"
@@ -1759,13 +1760,13 @@ async def admin_actions(event):
                     # [CHANGED] category-wise price lookup
                     price = lookup_auto_price(add_category, c_name, year)
                     if price is not None:
-                        await conv.send_message(f"⚡ <b>Auto-Price Applied:</b> {len(accs)}x {c_name} ({year}) at {P_INR}{price} [{cat_label(add_category)}].")
+                        await conv.send_message(f"🚀 <b>Auto-Price Applied:</b> {len(accs)}x {c_name} ({year}) at {P_INR}{price} [{cat_label(add_category)}].")
                     else:
                         price = lookup_existing_price(add_category, c_name)
                         if price is not None:
-                            await conv.send_message(f"⚡ <b>Auto-Added:</b> {len(accs)}x {c_name} at {P_INR}{price} (Copied from {cat_label(add_category)} stock).")
+                            await conv.send_message(f"🚀 <b>Auto-Added:</b> {len(accs)}x {c_name} at {P_INR}{price} (Copied from {cat_label(add_category)} stock).")
                         else:
-                            price = int((await get_reply(f"📌 Found {len(accs)}x {c_name} ({year}) [{cat_label(add_category)}].\n{P_MONEY} Enter Price (₹):")).raw_text)
+                            price = int((await get_reply(f"🔖 Found {len(accs)}x {c_name} ({year}) [{cat_label(add_category)}].\n{P_MONEY} Enter Price (₹):")).raw_text)
 
                     for acc in accs:
                         acc_twofa = twofa_pass
@@ -1787,7 +1788,7 @@ async def admin_actions(event):
                 db.commit()
                 os.remove(zip_path); shutil.rmtree(extracted_dir)
                 fail_txt = ("\n" + P_WARN + " <b>2FA 2007 nahi ho paya:</b>\n" + html.escape("\n".join(failed_2fa))) if failed_2fa else ""
-                await conv.send_message(f"{P_YES} <b>Bulk Interactive Upload Complete!</b>\n{P_ON} Added: {success}\n📦 Category: {cat_label(add_category)}\n{P_2FA} 2FA: {NEW_2FA}{fail_txt}")
+                await conv.send_message(f"{P_YES} <b>Bulk Interactive Upload Complete!</b>\n{P_ON} Added: {success}\n🗃️ Category: {cat_label(add_category)}\n{P_2FA} 2FA: {NEW_2FA}{fail_txt}")
 
             elif action_data.startswith("addstock") and has_perm(uid, 'p_add_stock'):
                 stock_parts = action_data.split("|")
@@ -1852,11 +1853,11 @@ async def admin_actions(event):
                 # [CHANGED] category-wise price lookup
                 price = lookup_auto_price(add_category, c_name, year)
                 if price is not None:
-                    await conv.send_message(f"⚡ <b>Auto-Price Applied:</b> {P_INR}{price} for {c_name} ({year}) [{cat_label(add_category)}]")
+                    await conv.send_message(f"🚀 <b>Auto-Price Applied:</b> {P_INR}{price} for {c_name} ({year}) [{cat_label(add_category)}]")
                 else:
                     price = lookup_existing_price(add_category, c_name)
                     if price is not None:
-                        await conv.send_message(f"⚡ <b>Auto-detected Price:</b> {P_INR}{price} for {c_name} [{cat_label(add_category)}]")
+                        await conv.send_message(f"🚀 <b>Auto-detected Price:</b> {P_INR}{price} for {c_name} [{cat_label(add_category)}]")
                     else:
                         price = int((await get_reply(f"{P_MONEY} Price (₹) for {c_name} [{cat_label(add_category)}]:")).raw_text)
                 
@@ -1866,7 +1867,7 @@ async def admin_actions(event):
                 await conv.send_message(f"{P_YES} Added! {P_GIFT} Category: {cat_label(add_category)}")
 
             elif action_data == "supporturl" and has_perm(uid, 'p_settings'):
-                url = (await get_reply("🔗 Enter new Support URL (must start with http:// or https://):")).raw_text
+                url = (await get_reply("🌐 Enter new Support URL (must start with http:// or https://):")).raw_text
                 if not url.startswith("http"): url = "https://" + url.replace("@", "t.me/")
                 cur.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('support_url',?)", (url,))
                 db.commit()
@@ -1874,8 +1875,8 @@ async def admin_actions(event):
 
             elif action_data == "bcast" and has_perm(uid, 'p_stats'):
                 txt = (await get_reply(f"{P_DOC} <b>Message (Supports HTML & tg-emoji tags):</b>")).raw_text
-                btn_name = (await get_reply(f"🔘 <b>Button Name (or 'skip'):</b>")).raw_text
-                url = (await get_reply("🔗 <b>URL:</b>")).raw_text if btn_name.lower() != 'skip' else None
+                btn_name = (await get_reply(f"🔲 <b>Button Name (or 'skip'):</b>")).raw_text
+                url = (await get_reply("🌐 <b>URL:</b>")).raw_text if btn_name.lower() != 'skip' else None
                 btns = [[Button.url(btn_name, url)]] if url else None
                 users = cur.execute("SELECT user_id FROM users").fetchall()
                 s, f = 0, 0
@@ -1915,7 +1916,7 @@ async def admin_actions(event):
                 await conv.send_message(f"{P_YES} Rate set to {r}.")
 
             elif action_data == "restoreusr" and has_perm(uid, 'p_settings'):
-                resp = await get_reply(f"📤 <b>Send the <code>users_backup.csv</code> file:</b>")
+                resp = await get_reply(f"⬆️ <b>Send the <code>users_backup.csv</code> file:</b>")
                 if not resp.file or not resp.file.name.endswith('.csv'): return await conv.send_message(f"{P_NO} Invalid file.")
                 await bot.download_media(resp, "temp_restore.csv")
                 with open("temp_restore.csv", "r", encoding="utf-8") as f:
@@ -1938,14 +1939,14 @@ async def admin_actions(event):
                 ns = 0 if is_ban[0] == 1 else 1
                 cur.execute("UPDATE users SET banned=? WHERE user_id=?", (ns, t_uid))
                 db.commit()
-                await conv.send_message(f"User {t_uid} is {'Banned 🚫' if ns == 1 else 'Unbanned ✅'}.")
+                await conv.send_message(f"User {t_uid} is {'Banned 🚫' if ns == 1 else 'Unbanned ✔️'}.")
 
         except ValueError: await conv.send_message(f"{P_NO} Cancelled.")
         except Exception as e: await conv.send_message(f"{P_NO} Error: {e}")
 
 def otp_buttons(phone):
-    return [[Button.inline("🔄 Get OTP Again", f"get_otp_again|{phone}")],
-            [Button.inline("🚪 Finish & Logout", f"logout_bot|{phone}")]]
+    return [[Button.inline("🔁 Get OTP Again", f"get_otp_again|{phone}")],
+            [Button.inline("🔚 Finish & Logout", f"logout_bot|{phone}")]]
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -1959,7 +1960,7 @@ async def render_sessions(e, phone, note=""):
     """Account ke saare login devices dikhata hai, har device ka alag Logout button ke saath."""
     order = active_orders.get(phone)
     if not order:
-        return await e.answer("⚠️ No active order found or already logged out.", alert=True)
+        return await e.answer("🚨 No active order found or already logged out.", alert=True)
     res = await order['client'](GetAuthorizationsRequest())
     others = [a for a in res.authorizations if not a.current]
 
@@ -1968,29 +1969,29 @@ async def render_sessions(e, phone, note=""):
         dev = html.escape(f"{a.device_model or 'Unknown'} | {a.app_name or ''} {a.platform or ''}".strip())
         loc = html.escape(a.country or "Unknown")
         when = to_ist(a.date_active) if a.date_active else "-"
-        lines.append(f"📱 <b>Device {n}</b>\n    {dev}\n    🌍 {loc} | 🕒 {when}")
+        lines.append(f"📲 <b>Device {n}</b>\n    {dev}\n    🌍 {loc} | 🕰️ {when}")
         short = (a.device_model or 'Unknown')[:14]
-        btns.append([Button.inline(f"❌ Logout Device {n} ({short})", f"lo_dev|{phone}|{a.hash}")])
+        btns.append([Button.inline(f"🚫 Logout Device {n} ({short})", f"lo_dev|{phone}|{a.hash}")])
 
     if others:
         body = f"{P_YES} <b>Login devices: {len(others)}</b>\n\n" + "\n\n".join(lines)
         if len(others) > 1:
-            btns.append([Button.inline("🧹 Logout ALL Other Devices", f"lo_all|{phone}")])
+            btns.append([Button.inline("🧼 Logout ALL Other Devices", f"lo_all|{phone}")])
     else:
         body = f"{P_WARN} <b>Koi dusra device login nahi hai.</b>"
 
     msg = ((note + "\n\n") if note else "")
     msg += (f"{P_2FA} <b>Active Sessions</b>\n{P_PHONE} <code>{phone}</code>\n\n{body}\n\n"
-            f"🤖 Bot ka apna session abhi bhi login hai.\n"
+            f"🧠 Bot ka apna session abhi bhi login hai.\n"
             f"<i>Jis device ko hatana hai uska button dabao. Kaam khatam hone par Bot Session logout karo.</i>")
-    btns.append([Button.inline("🔄 Refresh", f"logout_bot|{phone}")])
-    btns.append([Button.inline("🚪 Logout Bot Session (Finish)", f"logout_cf|{phone}")])
-    btns.append([Button.inline("↩️ Cancel", f"logout_no|{phone}")])
+    btns.append([Button.inline("🔁 Refresh", f"logout_bot|{phone}")])
+    btns.append([Button.inline("🔚 Logout Bot Session (Finish)", f"logout_cf|{phone}")])
+    btns.append([Button.inline("↪️ Cancel", f"logout_no|{phone}")])
     try: await e.edit(msg, buttons=btns)
     except MessageNotModifiedError: pass
 
-MENU_LABELS = {"🛒 Buy Account", "👤 My Profile", "📁 Buy Sessions", "🎁 Refer & Earn",
-               "💰 Deposit", "📊 My Stats", "📞 Support", "🔐 Admin Panel"}
+MENU_LABELS = {"🛍️ Buy Account", "🧑 My Profile", "📁 Buy Sessions", "🎉 Refer & Earn",
+               "🪙 Deposit", "📈 My Stats", "☎️ Support", "🛡️ Admin Panel"}
 
 # ================= CORE EVENT ROUTERS =================
 @bot.on(events.NewMessage(pattern=r"(?i)^/start"))
@@ -2057,12 +2058,12 @@ async def handle_all_messages(e):
             dep_id = cur.lastrowid
             await e.reply(f"{PE_GIFT} Deposit request submitted! Please wait for admin approval.")
             cap = f"{PE_LIGHTNING} <b>NEW DEPOSIT REQUEST</b>\n{P_ACC} User: <code>{uid}</code>\n{P_MONEY} Request: <b>{P_INR}{info['amount']}</b>\n{P_CARD} Method: {info['method']}\n{P_ID} Ref: <code>{dep_id}</code>"
-            btns = [[Button.inline(f"✅ Accept (₹{final_amt})", f"dep_acc|{dep_id}|{uid}|{info['method']}|exact|{final_amt}"), Button.inline("❌ Reject", f"dep_rej|{dep_id}|{uid}")],
-                    [Button.inline("📝 Custom Amount", f"dep_acc|{dep_id}|{uid}|{info['method']}|custom|0")]]
+            btns = [[Button.inline(f"✔️ Accept (₹{final_amt})", f"dep_acc|{dep_id}|{uid}|{info['method']}|exact|{final_amt}"), Button.inline("🚫 Reject", f"dep_rej|{dep_id}|{uid}")],
+                    [Button.inline("✍️ Custom Amount", f"dep_acc|{dep_id}|{uid}|{info['method']}|custom|0")]]
             
             try:
                 if e.photo: await bot.send_message(LOG_CHANNEL_ID, cap, file=e.media, buttons=btns)
-                else: await bot.send_message(LOG_CHANNEL_ID, cap + f"\n🔗 Hash: {html.escape(e.raw_text)}", buttons=btns)
+                else: await bot.send_message(LOG_CHANNEL_ID, cap + f"\n🌐 Hash: {html.escape(e.raw_text)}", buttons=btns)
             except Exception as log_err:
                 logger.error(f"Failed to log deposit: {log_err}")
             return
@@ -2087,7 +2088,7 @@ async def handle_all_messages(e):
                 try: await bot.edit_message(LOG_CHANNEL_ID, msg_id, f"{P_NO} <b>REJECTED USER {t_uid}</b>\nReason: {html.escape(text)}")
                 except: pass
                 
-                await bot.send_message(int(t_uid), f"{P_NO} <b>Deposit Rejected!</b>\n📋 Reason: {html.escape(text)}")
+                await bot.send_message(int(t_uid), f"{P_NO} <b>Deposit Rejected!</b>\n🗒️ Reason: {html.escape(text)}")
                 await e.reply(f"{P_YES} Rejection reason sent.")
                 admin_dep_state.pop(uid)
                 return
@@ -2123,25 +2124,25 @@ async def handle_all_messages(e):
                 
                 rate = get_usdt_rate()
                 usdt_amt = round(amt / rate, 2)
-                rate_text = f"\n\n{P_MONEY} <b>Amount to Pay:</b> {P_INR}{amt} (~{P_USDT}{usdt_amt} USDT)\n💱 <i>Exchange Rate: {P_INR}{rate} = $1</i>"
+                rate_text = f"\n\n{P_MONEY} <b>Amount to Pay:</b> {P_INR}{amt} (~{P_USDT}{usdt_amt} USDT)\n💹 <i>Exchange Rate: {P_INR}{rate} = $1</i>"
                 
                 if method == "Cwallet":
                     msg = (f"{P_CARD} <b>Method:</b> {method}\n\n🚀 <b>Address / ID:</b>\n<code>{CWALLET_ID}</code>"
-                           f"{rate_text}\n\n👉 <b>Send Proof:</b>\nPlease send the Transaction Hash (Link) or a Screenshot of the payment now.")
+                           f"{rate_text}\n\n➡️ <b>Send Proof:</b>\nPlease send the Transaction Hash (Link) or a Screenshot of the payment now.")
                     try:
-                        await bot.send_file(uid, CWALLET_QR, caption=msg, buttons=[[Button.inline("❌ Cancel", "cancel_action")]])
+                        await bot.send_file(uid, CWALLET_QR, caption=msg, buttons=[[Button.inline("🚫 Cancel", "cancel_action")]])
                     except Exception:
-                        await bot.send_message(uid, msg + f"\n\n🔗 QR Link: {CWALLET_QR}", buttons=[[Button.inline("❌ Cancel", "cancel_action")]])
+                        await bot.send_message(uid, msg + f"\n\n🌐 QR Link: {CWALLET_QR}", buttons=[[Button.inline("🚫 Cancel", "cancel_action")]])
                 else:
                     row = cur.execute("SELECT caption, qr_file_id FROM custom_payments WHERE name=?", (method,)).fetchone()
                     if row:
-                        cap = row[0] + f"{rate_text}\n\n👇 <b>After paying, send a clear Screenshot here:</b>"
-                        btns = [[Button.inline("❌ Cancel", "cancel_action")]]
+                        cap = row[0] + f"{rate_text}\n\n⬇️ <b>After paying, send a clear Screenshot here:</b>"
+                        btns = [[Button.inline("🚫 Cancel", "cancel_action")]]
                         if row[1] and os.path.exists(row[1]): 
                             try: await bot.send_file(e.chat_id, row[1], caption=cap, buttons=btns)
                             except: await e.reply(cap, buttons=btns)
                         else: await e.reply(cap, buttons=btns)
-                    else: await e.reply(f"{P_CARD} <b>{method} Deposit</b>{rate_text}\n\n👇 Send Screenshot here:", buttons=[[Button.inline("❌ Cancel", "cancel_action")]])
+                    else: await e.reply(f"{P_CARD} <b>{method} Deposit</b>{rate_text}\n\n⬇️ Send Screenshot here:", buttons=[[Button.inline("🚫 Cancel", "cancel_action")]])
             except ValueError: await e.respond(f"{P_NO} Please enter a valid number in {P_INR} (INR).")
             return
 
@@ -2163,19 +2164,19 @@ async def handle_callback_query(e):
     try:
         uid = e.sender_id
         if not is_bot_online() and not is_admin(uid):
-            return await e.answer("⚙️ Bot is under maintenance.", alert=True)
+            return await e.answer("🛠️ Bot is under maintenance.", alert=True)
             
         ensure_user(uid)
         now = time.time()
         if uid in user_spam_cooldown and now - user_spam_cooldown[uid] < 0.5:
-            return await e.answer("⚠️ Please slow down! Don't spam buttons.", alert=True)
+            return await e.answer("🚨 Please slow down! Don't spam buttons.", alert=True)
         user_spam_cooldown[uid] = now
 
         if is_user_banned(uid): return await e.answer("🚫 BANNED", alert=True)
         data = e.data.decode()
 
         if data == "verify_join":
-            if not await check_channel_joined(uid): return await e.answer("⚠️ You must join the channels first!", alert=True)
+            if not await check_channel_joined(uid): return await e.answer("🚨 You must join the channels first!", alert=True)
             # [NEW] Channels join complete -> referrer ko ₹ bonus
             await reward_referrer_on_join(uid)
             row = cur.execute("SELECT terms_accepted FROM users WHERE user_id=?", (uid,)).fetchone()
@@ -2190,7 +2191,7 @@ async def handle_callback_query(e):
         elif data == "tc_accept":
             cur.execute("UPDATE users SET terms_accepted=1 WHERE user_id=?", (uid,))
             db.commit()
-            await e.answer("✅ Terms Accepted!", alert=True)
+            await e.answer("✔️ Terms Accepted!", alert=True)
             await send_main_menu(e, uid)
             
         elif data == "tc_reject":
@@ -2234,51 +2235,51 @@ async def handle_callback_query(e):
         elif data.startswith("get_otp_again|"):
             phone = data.split("|")[1]
             if phone not in active_orders:
-                return await e.answer("⚠️ Session already logged out or expired.", alert=True)
+                return await e.answer("🚨 Session already logged out or expired.", alert=True)
             
             order = active_orders[phone]
             client = order['client']
             start_time = order['start_time']
             
-            await e.answer("🔄 Fetching latest OTP...", alert=False)
+            await e.answer("🔁 Fetching latest OTP...", alert=False)
             try:
                 msgs = await client.get_messages(777000, limit=5)
                 latest_code = extract_login_code(msgs, start_time)
 
                 if latest_code:
-                    twofa_text = f"{P_2FA} <b>2FA:</b> <code>{order['twofa']}</code>" if order['twofa'] != "None" else f"🔓 <b>2FA:</b> <code>Disabled (No Password)</code>"
+                    twofa_text = f"{P_2FA} <b>2FA:</b> <code>{order['twofa']}</code>" if order['twofa'] != "None" else f"🗝️ <b>2FA:</b> <code>Disabled (No Password)</code>"
                     msg = (f"{P_YES} <b>Latest OTP Fetched!</b>\n\n"
-                           f"{P_PHONE} <b>Phone:</b> <code>{phone}</code>\n"
-                           f"{P_FLAG} <b>Country:</b> {order['c_icon']} {order['country']}\n"
-                           f"{P_OTP} <b>OTP:</b> <code>{latest_code}</code>\n"
+                           f"{P_PHONE} <b>Phone:</b> <code>{phone}</code>\n\n"
+                           f"{P_FLAG} <b>Country:</b> {order['c_icon']} {order['country']}\n\n"
+                           f"{P_OTP} <b>OTP:</b> <code>{latest_code}</code>\n\n"
                            f"{twofa_text}")
-                    try: await e.edit(msg, buttons=[[Button.inline("🔄 Get OTP Again", f"get_otp_again|{phone}")], [Button.inline("🚪 Finish & Logout", f"logout_bot|{phone}")]])
+                    try: await e.edit(msg, buttons=[[Button.inline("🔁 Get OTP Again", f"get_otp_again|{phone}")], [Button.inline("🔚 Finish & Logout", f"logout_bot|{phone}")]])
                     except MessageNotModifiedError: pass
                 else:
-                    await e.answer("⏳ No new OTP found yet. Try again in a few seconds.", alert=True)
+                    await e.answer("⌛ No new OTP found yet. Try again in a few seconds.", alert=True)
             except Exception as ex:
-                await e.answer(f"❌ Error fetching OTP.", alert=True)
+                await e.answer(f"🚫 Error fetching OTP.", alert=True)
 
         elif data.startswith("logout_bot|"):
             phone = data.split("|")[1]
             order = active_orders.get(phone)
             if not order:
-                return await e.answer("⚠️ No active order found or already logged out.", alert=True)
+                return await e.answer("🚨 No active order found or already logged out.", alert=True)
             if order['uid'] != uid:
-                return await e.answer("❌ Ye order aapka nahi hai.", alert=True)
+                return await e.answer("🚫 Ye order aapka nahi hai.", alert=True)
             try: await render_sessions(e, phone)
             except Exception as ex:
                 logger.error(f"Sessions list error: {ex}")
-                await e.answer("❌ Session list fetch nahi ho payi. Thodi der baad try karo.", alert=True)
+                await e.answer("🚫 Session list fetch nahi ho payi. Thodi der baad try karo.", alert=True)
 
         elif data.startswith("lo_dev|") or data.startswith("lo_all|"):
             p = data.split("|")
             phone = p[1]
             order = active_orders.get(phone)
             if not order:
-                return await e.answer("⚠️ No active order found or already logged out.", alert=True)
+                return await e.answer("🚨 No active order found or already logged out.", alert=True)
             if order['uid'] != uid:
-                return await e.answer("❌ Ye order aapka nahi hai.", alert=True)
+                return await e.answer("🚫 Ye order aapka nahi hai.", alert=True)
             try:
                 if p[0] == "lo_dev":
                     h = int(p[2])
@@ -2295,24 +2296,24 @@ async def handle_callback_query(e):
             except Exception as ex:
                 logger.error(f"Device logout error: {ex}")
                 if "FRESH_RESET" in str(ex).upper():
-                    await e.answer("⚠️ Telegram rule: dusre devices tabhi hat sakte hain jab bot ka session 24 ghante se purana ho. Baad me try karo.", alert=True)
+                    await e.answer("🚨 Telegram rule: dusre devices tabhi hat sakte hain jab bot ka session 24 ghante se purana ho. Baad me try karo.", alert=True)
                 else:
-                    await e.answer("❌ Device logout nahi ho paya. Thodi der baad try karo.", alert=True)
+                    await e.answer("🚫 Device logout nahi ho paya. Thodi der baad try karo.", alert=True)
 
         elif data.startswith("logout_no|"):
             phone = data.split("|")[1]
             order = active_orders.get(phone)
             if not order or order['uid'] != uid:
-                return await e.answer("⚠️ No active order found.", alert=True)
-            await e.edit(f"↩️ <b>Logout cancelled.</b>\n{P_PHONE} <code>{phone}</code>\nOTP dobara chahiye to neeche button dabao.", buttons=otp_buttons(phone))
+                return await e.answer("🚨 No active order found.", alert=True)
+            await e.edit(f"↪️ <b>Logout cancelled.</b>\n{P_PHONE} <code>{phone}</code>\nOTP dobara chahiye to neeche button dabao.", buttons=otp_buttons(phone))
 
         elif data.startswith("logout_cf|"):
             phone = data.split("|")[1]
             order = active_orders.get(phone)
             if not order:
-                return await e.answer("⚠️ No active order found or already logged out.", alert=True)
+                return await e.answer("🚨 No active order found or already logged out.", alert=True)
             if order['uid'] != uid:
-                return await e.answer("❌ Ye order aapka nahi hai.", alert=True)
+                return await e.answer("🚫 Ye order aapka nahi hai.", alert=True)
             order = active_orders.pop(phone)
             try: await order['client'].log_out()
             except: pass
@@ -2347,8 +2348,8 @@ async def handle_callback_query(e):
                 if len(curr) > 7: curr = curr[:7]
             elif action == "del": curr = curr[:-1] or "0"
             elif action == "cancel":
-                btns = [[Button.inline(f"✅ Accept (₹{orig_amt})", f"dep_acc|{dep_id}|{t_uid}|{method}|exact|{orig_amt}"), Button.inline("❌ Reject", f"dep_rej|{dep_id}|{t_uid}")],
-                        [Button.inline("📝 Custom Amount", f"dep_acc|{dep_id}|{t_uid}|{method}|custom|0")]]
+                btns = [[Button.inline(f"✔️ Accept (₹{orig_amt})", f"dep_acc|{dep_id}|{t_uid}|{method}|exact|{orig_amt}"), Button.inline("🚫 Reject", f"dep_rej|{dep_id}|{t_uid}")],
+                        [Button.inline("✍️ Custom Amount", f"dep_acc|{dep_id}|{t_uid}|{method}|custom|0")]]
                 return await e.edit(f"{PE_LIGHTNING} <b>NEW DEPOSIT REQUEST</b>\n{P_ACC} User: <code>{t_uid}</code>\n{P_MONEY} Request: <b>{P_INR}{orig_amt}</b>\n{P_CARD} Method: {method}\n{P_ID} Ref: <code>{dep_id}</code>", buttons=btns)
             elif action == "conf":
                 amt = int(curr)
@@ -2364,7 +2365,7 @@ async def handle_callback_query(e):
                     
                 await process_referral_bonus(t_uid, amt)
                 await e.edit(f"{PE_CHECK} <b>APPROVED {P_INR}{amt} TO {t_uid} (Custom Amount)</b>")
-                await bot.send_message(int(t_uid), f"{PE_CHECK} <b>Deposit Approved!</b>\n{P_MONEY} Amount Added: {P_INR}{amt}\n📉 Old: {P_INR}{prev_bal} | 📈 New: {P_INR}{prev_bal+amt}")
+                await bot.send_message(int(t_uid), f"{PE_CHECK} <b>Deposit Approved!</b>\n{P_MONEY} Amount Added: {P_INR}{amt}\n🔻 Old: {P_INR}{prev_bal} | 🔺 New: {P_INR}{prev_bal+amt}")
                 return
 
             custom_dep_amt[dep_id] = curr
@@ -2390,7 +2391,7 @@ async def handle_callback_query(e):
                 await process_referral_bonus(t_uid, amt)
                 
                 user_msg = (f"{PE_CHECK} <b>Deposit Approved!</b>\n\n{P_MONEY} <b>Amount Added:</b> ${to_usd(amt):.2f} ({P_INR}{amt})\n"
-                            f"📉 <b>Previous Balance:</b> ${to_usd(prev_bal):.2f} ({P_INR}{prev_bal})\n📈 <b>New Balance:</b> ${to_usd(prev_bal+amt):.2f} ({P_INR}{prev_bal+amt})")
+                            f"🔻 <b>Previous Balance:</b> ${to_usd(prev_bal):.2f} ({P_INR}{prev_bal})\n🔺 <b>New Balance:</b> ${to_usd(prev_bal+amt):.2f} ({P_INR}{prev_bal+amt})")
                 await bot.send_message(int(t_uid), user_msg)
                 try: await e.edit(f"{PE_CHECK} <b>INSTANT CREDITED {P_INR}{amt} TO {t_uid}</b>")
                 except MessageNotModifiedError: pass
@@ -2412,7 +2413,7 @@ async def handle_callback_query(e):
     except Exception as ex: print(f"Callback Error: {ex}")
 
 async def main():
-    print("✅ ULTIMATE ADVANCED HTML BOT STARTED SUCCESSFULLY")
+    print("✔️ ULTIMATE ADVANCED HTML BOT STARTED SUCCESSFULLY")
     await bot.run_until_disconnected()
 
 if __name__ == '__main__':
