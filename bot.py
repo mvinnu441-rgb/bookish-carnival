@@ -67,7 +67,7 @@ CHECK_CHANNELS = env_list("CHECK_CHANNELS", "-1004398128411")
 JOIN_URLS = env_list("JOIN_URLS", "https://t.me/Vinnu_channel_2")
 
 # LINKS & MEDIA
-TERMS_URL = os.getenv("TERMS_URL", "keen-bubblegum-6a3770.netlify.app>
+TERMS_URL = os.getenv("TERMS_URL", "keen-bubblegum-6a3770.netlify.app")
 CWALLET_QR = os.getenv("CWALLET_QR", "https://example.com/qr.jpg")
 CWALLET_ID = os.getenv("CWALLET_ID", "81556414")
 
