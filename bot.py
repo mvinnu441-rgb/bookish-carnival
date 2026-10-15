@@ -24,14 +24,6 @@ from telethon.errors import (
     PhoneNumberBannedError,
     FloodWaitError,
 )
-try:
-    from telethon.tl.types import SentCodeTypeApp, SentCodeTypeCall
-except ImportError:
-    try:
-        from telethon.tl.types.auth import SentCodeTypeApp, SentCodeTypeCall
-    except ImportError:
-        class SentCodeTypeApp: pass   # fallback: is version me ye type nahi milta, bot phir bhi chalega
-        class SentCodeTypeCall: pass
 from telethon.tl.types import ReplyKeyboardMarkup, KeyboardButtonRow, KeyboardButton
 from telethon.extensions import html as tl_html
 from telethon.tl import types as tl_types
@@ -74,7 +66,7 @@ def env_list(name, default_csv):
 
 API_ID = env_int("API_ID",38983053)
 API_HASH = os.getenv("API_HASH","6fa92a5633ee4d935746e5210c738da0")
-BOT_TOKEN = os.getenv("BOT_TOKEN", " ")
+BOT_TOKEN = os.getenv("BOT_TOKEN"," ")
 ADMIN_ID = env_int("ADMIN_ID", 8752870238)
 
 # CHANNELS
@@ -1653,11 +1645,6 @@ async def admin_actions(event):
                 try:
                     await client.connect()
                     sreq = await client.send_code_request(phone)
-
-                    if isinstance(sreq.type, SentCodeTypeApp):
-                        await conv.send_message(f"{P_WARN} <b>Ye OTP Telegram APP me aayega, SMS me nahi!</b>\nIs number ke Telegram app me jaake code dekho (India numbers me SMS kai baar DLT rule ki wajah se block ho jaata hai).")
-                    elif isinstance(sreq.type, SentCodeTypeCall):
-                        await conv.send_message(f"{P_WARN} <b>Code is number par CALL karke bataya jaayega.</b>")
 
                     twofa_pass = "None"
                     raw_2fa = None
